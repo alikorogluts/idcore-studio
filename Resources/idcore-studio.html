@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>ID:CORE Studio</title>
+<link rel="stylesheet" href="studio-assets/studio.css">
+</head>
+<body data-mode="demo">
+<header>
+  <div class="bar">
+    <div class="brand"><img class="mark" src="studio-assets/amfi-simgesi.png" alt="" width="38" height="38"><div><strong>ID:CORE Studio</strong><small>Blackstar ID:CORE Stereo 10 V4</small></div></div>
+    <div class="actions"><span class="status" id="status" role="status">Demo</span><button id="connect" class="primary">USB ile bağlan</button></div>
+  </div>
+</header>
+<main>
+  <section class="hero" aria-labelledby="hero-heading">
+    <h1 id="hero-heading">Amfi ve<br>sanal pedallar</h1>
+    <button id="pedal-setup">Sanal pedal panosu <span aria-hidden="true">↘</span></button>
+  </section>
+  <p id="notice" role="status">Demo modu · Sanal zinciri düzenleyebilir, ses için amfiyi USB ile bağlayabilirsin.</p>
+  <nav class="views" aria-label="Kontrol panoları">
+    <button data-view="pedals-view" aria-current="true" aria-controls="pedals-view">Sanal pedallar</button>
+    <button data-view="effects-view" aria-controls="effects-view">Dahili efektler</button>
+    <button data-view="tone-view" aria-controls="tone-view">Amfi ve EQ</button>
+    <button data-view="recording-view" aria-controls="recording-view">Kayıt</button>
+  </nav>
+  <div class="layout">
+    <section class="panel" id="effects-view" aria-labelledby="fx-heading" hidden>
+      <div class="section-head"><h2 id="fx-heading">Dahili efektler</h2></div>
+      <div class="effects" id="effects"></div>
+      <p class="hint">Dahili efektler amfinin doğrudan sesine uygulanır. Şarkı tonlarının delay ve modülasyonu sanal pedallardan gelir.</p>
+    </section>
+    <section class="panel" id="tone-view" aria-labelledby="tone-heading" hidden>
+      <div class="section-head"><h2 id="tone-heading">Amfi ve EQ</h2><small id="voice-mode">Ton karakteri</small></div>
+      <div class="voices" id="voices" role="group" aria-label="Ton karakteri"></div>
+      <div class="tone" id="tone"></div>
+      <div class="amp-actions"><button type="button" id="amp-refresh">Ayarları yeniden oku</button><p class="hint" id="amp-feedback" role="status"></p></div>
+      <p class="hint" id="amp-hint">Düğme hakkında bilgi için üzerine gel veya klavyeyle odaklan.</p>
+    </section>
+    <section class="panel" id="recording-view" aria-labelledby="recording-heading" hidden>
+      <div class="section-head"><h2 id="recording-heading">Kayıt</h2><output id="record-time" aria-label="Geçen süre">0:00</output></div>
+      <div class="record-destination"><button type="button" id="record-folder">Klasör seç…</button><span id="record-folder-label">Henüz klasör seçilmedi.</span></div>
+      <fieldset class="record-sources">
+        <legend>Ses kaynakları</legend>
+        <label><input type="checkbox" id="record-guitar" checked> Sanal gitar</label>
+        <label><input type="checkbox" id="record-mac"> Mac sesi</label>
+        <label><input type="checkbox" id="record-diagnostics"> Ham gitar ve EQ’yu da kaydet</label>
+      </fieldset>
+      <p class="hint">Sanal gitar ve Mac sesi ayrı WAV dosyalarına yazılır. Pedal Volume sadece amfiden duyduğun sesi ayarlar.</p>
+      <div class="record-tools"><button type="button" id="record-audio" hidden>Sanal sesi aç</button><button type="button" id="record-start" disabled>Kaydı başlat</button><button type="button" id="record-reveal" disabled>Kayıt klasörünü aç</button></div>
+      <p class="hint" id="record-status" role="status"></p>
+    </section>
+    <section class="panel" id="pedals-view" aria-labelledby="pedals-heading">
+      <div class="section-head"><h2 id="pedals-heading" tabindex="-1">Sanal pedal zinciri</h2><small>Esinlenilmiş modeller</small></div>
+      <div class="monitor">
+        <p class="route">Blackstar ön katı ve EQ → Sanal pedallar → Blackstar hoparlörleri</p>
+        <button id="audio-toggle" aria-describedby="audio-status">Sanal pedalları aç</button>
+        <label class="control">Ön kat girişi <meter id="audio-meter" min="0" max="100" value="0" aria-label="Ön kat giriş seviyesi"></meter></label>
+        <label class="control">Pedal çıkışı <meter id="audio-send-meter" min="0" max="100" value="0" aria-label="Pedal çıkış seviyesi"></meter></label>
+        <label class="control"><span class="control-label">Pedal Volume <output id="output-value">20%</output></span><input id="audio-level" type="range" min="0" max="100" value="20" aria-label="Pedal Volume" aria-describedby="volume-help"></label>
+      </div>
+      <p class="hint" id="audio-status" role="status">Sanal sesi başlatmak için amfiyi USB ile bağla.</p>
+      <div class="listen-tools">
+        <label class="voice-auto"><input id="balance-levels" type="checkbox" checked> Clean ve drive sesini dengele</label>
+        <span class="hint" id="balance-status"></span>
+        <button type="button" id="direct-volume">Doğrudan sesi kıs</button>
+        <button type="button" id="usb-test">USB çıkışını dene</button>
+      </div>
+      <details class="studio-help tuner">
+        <summary>Volume ve Gain</summary>
+        <dl class="level-help" id="volume-help">
+          <div><dt>Pedal Volume</dt><dd>Sanal pedal dönüşünün sesini ayarlar. Ses azsa önce burayı yavaşça artır.</dd></div>
+          <div><dt>Amfi Volume</dt><dd>Blackstar’ın doğrudan gitar sesini ayarlar. Pedal açıkken çift ses duyarsan bunu kıs.</dd></div>
+          <div><dt>Gain</dt><dd>Ön katın ne kadar kırıldığını ve pedallara giren tonu değiştirir. Sadece daha fazla drive istediğinde artır.</dd></div>
+        </dl>
+        <p class="hint">Amfi yuvasını değiştirdikten sonra fiziksel Gain veya Volume düğmesi, kayıtlı konumu yakalayınca devreye girer. Blackstar’ın Recall ışığı o konumu gösterir.</p>
+      </details>
+      <div class="song-picker">
+        <div class="song-header"><h3>Duman · Şarkı tonları</h3><small id="song-count"></small></div>
+        <div class="song-toolbar">
+          <label>Şarkı<select id="song-title" aria-describedby="song-hint"><option value="">Zincirim</option></select></label>
+          <label id="song-section-wrap" hidden>Bölüm<select id="song-section"></select></label>
+        </div>
+        <p class="hint" id="song-hint">Şarkıyı ve çalacağın bölümü seç. Pedallar otomatik yüklenir. Amfinin altı yuvası ayrı seçilir.</p>
+        <div id="song-details" hidden>
+          <p id="song-active" class="song-active"></p>
+          <p class="hint" id="song-chain"></p>
+          <div class="song-voice">
+            <p><span>Önerilen amfi Voice</span> <strong id="song-voice"></strong></p>
+            <p class="hint" id="song-voice-status" role="status"></p>
+            <div class="song-toolbar song-actions">
+              <button type="button" id="song-apply-voice" class="song-listen">Voice’u uygula</button>
+              <label class="voice-auto"><input id="song-auto-voice" type="checkbox"> Şarkıyla otomatik seç</label>
+            </div>
+          </div>
+          <p class="hint" id="song-eq-status" role="status" hidden></p>
+          <div class="song-toolbar song-actions">
+            <a class="song-listen" id="song-listen" rel="noreferrer" hidden>Referansı dinle <span aria-hidden="true">↗</span></a>
+            <button type="button" id="song-eq" class="song-listen" hidden>EQ önerisini uygula</button>
+          </div>
+        </div>
+      </div>
+      <details class="tuner studio-help" id="tuner">
+        <summary>Akort ve entonasyon · A4 = 440 Hz</summary>
+        <div class="tuner-controls">
+          <label>Akort düzeni<select id="tuner-tuning"><option value="standard">Standart · E A D G B E</option><option value="drop-d">Drop D · D A D G B E</option></select></label>
+          <div class="tuner-modes" role="group" aria-label="Ölçüm türü">
+            <button type="button" id="tuner-open" aria-pressed="true">Açık tel</button>
+            <button type="button" id="tuner-intonation" aria-pressed="false">12. perde</button>
+          </div>
+        </div>
+        <div class="tuner-string-heading"><span>6 · Kalın tel → 1 · İnce tel</span><button type="button" id="tuner-auto" aria-pressed="true">Otomatik algıla</button></div>
+        <div id="tuner-strings" class="tuner-strings" role="group" aria-label="Gitar telleri"></div>
+        <div class="tuner-readout">
+          <div><span id="tuner-note" class="tuner-note">—</span><span id="tuner-detail"></span></div>
+          <div id="tuner-offset" class="tuner-scale" role="meter" aria-label="Hedef notadan sapma" aria-valuemin="-50" aria-valuemax="50" aria-valuenow="0" aria-valuetext="Sinyal bekleniyor"><span aria-hidden="true"></span></div>
+          <div class="tuner-scale-labels" aria-hidden="true"><span>−50 · Pes</span><span>0 cent</span><span>+50 · Tiz</span></div>
+          <p class="hint" id="tuner-instruction"></p>
+        </div>
+        <div class="intonation" id="tuner-check" hidden>
+          <p class="hint">Önce açık teli akort et. 12. perde telinin üzerinde hafifçe dokunarak harmoniği al. Ardından teli sustur ve aynı perdeye normal kuvvetle basıp çal.</p>
+          <div class="record-tools"><button type="button" id="tuner-capture" disabled>1. Harmoniği al</button><button type="button" id="tuner-reset">Yeniden ölç</button></div>
+          <p class="hint" id="tuner-result" role="status"></p>
+          <p class="hint">Uygulama farkı ölçer. Köprü ayarını gitarda elle yaparsın.</p>
+        </div>
+      </details>
+      <form class="pedal-form" id="pedal-form">
+        <select id="pedal-type" aria-label="Eklenecek sanal pedal"></select>
+        <button type="submit" id="add-pedal">+ Pedal ekle</button>
+        <button type="button" id="add-mutlugil">Mutlugil setini ekle</button>
+      </form>
+      <div class="info-bar" id="pedal-info">Pedallar gitar sinyaline listelendikleri sırayla uygulanır.</div>
+      <div class="virtual-chain" id="pedal-list" aria-label="Sanal pedal sırası"></div>
+      <p class="hint" id="pedal-empty" hidden>Zincir boş. Gitar sesi efekt eklenmeden USB üzerinden döner.</p>
+      <details class="studio-help muted">
+        <summary>Sanal sesi nasıl duyarım?</summary>
+        <p>Gitarı Blackstar’a, amfiyi Mac’e USB ile bağla. <strong>Sanal pedalları aç</strong> düğmesine bas. macOS USB gitar girişini Mikrofon izni altında gösterir.</p>
+        <p>Çift ses duyarsan amfinin Volume’unu kıs. Sanal pedal dönüşünü uygulamadaki <strong>Pedal Volume</strong> ile ayarla.</p>
+        <p>Şarkı tonlarını sanal pedallarla çalarken delay ve modülasyonu zincir sağlar. Amfinin dahili efektleri doğrudan hoparlör yoluna uygulanır.</p>
+      </details>
+    </section>
+    <aside class="panel" aria-labelledby="patch-heading">
+      <div class="section-head"><h2 id="patch-heading">Amfi yuvaları</h2><small><kbd>1</kbd>–<kbd>6</kbd></small></div>
+      <p class="hint" id="patch-state"></p>
+      <div class="patches" id="patches"></div>
+      <form class="rename-form" id="rename-form" hidden>
+        <label for="preset-name" id="rename-label">Preset adı</label>
+        <input id="preset-name" type="text" maxlength="32" required>
+        <button type="submit">Kaydet</button><button type="button" id="rename-cancel">Vazgeç</button>
+      </form>
+      <p class="patch-note info-bar" id="patch-note">Yuva bilgisi için üzerine gel. Adı düzenlemek için kaleme bas.</p>
+      <p class="hint" id="settings-status" role="status" hidden></p>
+    </aside>
+  </div>
+  <footer class="muted"><span id="usb-help">USB bağlantısı için Chrome veya Edge kullan.</span> <a href="https://www.blackstaramps.com/wp-content/uploads/2024/01/155300M-VA-1-IDCORE-V4-OWNERS-MANUAL.pdf" rel="noreferrer">Blackstar kılavuzu</a> · <a href="https://github.com/SirYasko/ASTRO-Blackstar" rel="noreferrer">USB protokolü</a></footer>
+</main>
+<script src="studio-assets/duman-tonlari.js"></script>
+<script src="studio-assets/amp-protocol.js"></script>
+<script src="studio-assets/pedal-models.js"></script>
+<script src="studio-assets/guitar-tuner.js"></script>
+<script src="studio-assets/studio.js"></script>
+</body>
+</html>

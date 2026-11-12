@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>ID:CORE Studio</string>
+	<key>CFBundleExecutable</key>
+	<string>IDCOREStudio</string>
+	<key>CFBundleIconFile</key>
+	<string>StudioIcon.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.idcore.studio</string>
+	<key>CFBundleName</key>
+	<string>ID:CORE Studio</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.13</string>
+	<key>CFBundleVersion</key>
+	<string>13</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Mac sesi kaynağını seçtiğinde çalan eşlik sesini ayrı bir WAV dosyasına kaydetmek için sistem sesi kullanılır.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>USB’ye bağlı Blackstar amfiden gitarın ham sesini okuyup sanal pedallardan geçirmek için ses girişi kullanılır.</string>
+</dict>
+</plist>
