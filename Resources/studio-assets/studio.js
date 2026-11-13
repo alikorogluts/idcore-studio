@@ -11,11 +11,17 @@
   const demoValues = new Map([[1, 3], [2, 61], [3, 38], [4, 84], [5, 54], [6, 58], [7, 78], [11, 89], [12, 64], [15, 0], [16, 0], [17, 1], [18, 0], [19, 15], [20, 64], [21, 55], [22, 64], [23, 0], [24, 12], [26, 30], [28, 40], [29, 0], [30, 16], [32, 34], [38, 64], [39, 40], [40, 1]]);
   const songTones = new Map(songAlbums.flatMap(({tones}) => tones.map((tone) => [tone.key, tone])));
   const tuner = GuitarTuner.mount(byId('tuner'));
+  const comparison = ToneComparison.mount(byId('recording-view'));
   const settingsKey = 'studio.virtualRig';
   let presetNames = demos.map(([name]) => name);
   let personalPedals = [{type: 1, amount: 34, enabled: true}, {type: 4, amount: 36, enabled: false}];
   let virtualPedals = personalPedals;
   let selectedSong = '';
+  let customTones = {};
+  let toneSaving = false;
+  let toneApplying = false;
+  let toneApplyMessage = '';
+  let toneSaveMessage = '';
   let stratType = 'sss';
   let autoSongVoice = false;
   let songVoiceRequest = '';
@@ -62,6 +68,7 @@
       button.setAttribute('aria-current', String(selected));
       byId(button.dataset.view).hidden = !selected;
     }
+    comparison.setBlocked(id !== 'recording-view' || recordingBusy || recording.active);
     if (id !== 'pedals-view') tuner.suspend();
   }
 
@@ -127,11 +134,27 @@
     }
   }
 
-  function selectSong(key) {
+  function currentSongTone() {
+    const preset = songTones.get(selectedSong);
+    const saved = customTones[selectedSong];
+    return saved && preset ? {...preset, ...saved, custom: true} : preset;
+  }
+
+  function songEQ(tone) {
+    return tone.custom ? tone.eq : stratEQ(tone, stratType);
+  }
+
+  function selectSong(key, {autoVoice = true} = {}) {
+    if (toneApplying && autoVoice) return;
     const tone = songTones.get(key);
     selectedSong = tone ? key : '';
-    songVoiceRequest = autoSongVoice ? selectedSong : '';
-    virtualPedals = tone ? tone.chain.map(([type, amount, ...extra]) => ({type, amount, enabled: true, extra})) : personalPedals;
+    const saved = customTones[selectedSong];
+    songVoiceRequest = autoVoice && autoSongVoice ? selectedSong : '';
+    virtualPedals = saved ? saved.pedals.map((pedal) => ({...pedal, extra: [...pedal.extra]})) :
+      tone ? tone.chain.map(([type, amount, ...extra]) => ({type, amount, enabled: true, extra})) : personalPedals;
+    byId('song-custom-pickup').value = saved?.pickup ?? tone?.pickup ?? 1;
+    toneApplyMessage = '';
+    toneSaveMessage = '';
     const listen = byId('song-listen');
     listen.hidden = !tone;
     if (tone) {
@@ -151,8 +174,8 @@
   }
 
   function applySongVoice() {
-    const voice = voices.indexOf(songTones.get(selectedSong)?.voice);
-    if (voice < 0 || !session?.ready || busy || session.mode !== 'manual') return false;
+    const voice = voices.indexOf(currentSongTone()?.voice);
+    if (toneApplying || voice < 0 || !session?.ready || busy || session.mode !== 'manual') return false;
     const current = session.pendingWrites.get(1)?.value ?? ampValues.get(1);
     if (current !== voice) edit(1, voice, {manualOnly: true});
     return true;
@@ -162,13 +185,45 @@
     if (songVoiceRequest && songVoiceRequest === selectedSong && applySongVoice()) songVoiceRequest = '';
   }
 
+  async function applySection(key) {
+    const link = session;
+    if (!link?.ready || link.mode !== 'manual' || toneApplying || busy || directPending || link.pendingWrites.size) return;
+    toneApplying = true;
+    try {
+      songVoiceRequest = '';
+      const rigReady = key === selectedSong ? saveSettings(false) : selectSong(key, {autoVoice: false});
+      const tone = currentSongTone();
+      if (!tone) return;
+      toneApplyMessage = 'Pedallar yükleniyor, amfi ayarları doğrulanıyor…';
+      render();
+      if (!await rigReady) throw new Error('Pedal zinciri yüklenemedi.');
+      if (session !== link || link.mode !== 'manual') throw new Error('Blackstar bağlantısını ve MANUAL modunu kontrol et.');
+      const voice = voices.indexOf(tone.voice);
+      const voiceChanges = ampValues.get(1) !== voice;
+      const parameters = [[1, voice], ...Object.entries(songEQ(tone)).map(([id, value]) => [Number(id), value])];
+      const confirmed = await Promise.all(parameters.map(([id, value]) =>
+        !voiceChanges && ampValues.get(id) === value ? true : edit(id, value, {manualOnly: true, section: true})
+      ));
+      if (session !== link || link.mode !== 'manual' || confirmed.includes(false)) {
+        throw new Error('Pedallar yüklendi. Amfi bütün ayarları doğrulamadı. MANUAL modunu kontrol edip tekrar uygula.');
+      }
+      const pickup = tone.pickup;
+      toneApplyMessage = `Pedallar, Voice ve EQ hazır. Gitarda ${pickup}. konumu seç · ${stratPickups[pickup - 1]}.`;
+    } catch (error) {
+      toneApplyMessage = error.message;
+    } finally {
+      toneApplying = false;
+      render();
+    }
+  }
+
   function renderSongVoice(tone, live) {
     const voice = voices.indexOf(tone.voice);
     const pending = live && session.pendingWrites.has(1);
     const current = live ? ampValues.get(1) : undefined;
     const matched = current === voice;
     const button = byId('song-apply-voice');
-    button.disabled = !live || session.mode !== 'manual' || pending || matched;
+    button.disabled = toneApplying || !live || session.mode !== 'manual' || pending || matched;
     byId('song-voice').textContent = tone.voice;
     const prefix = current === undefined ? '' : `Şu an ${voices[current]}. `;
     let detail = 'Blackstar’daki VOICE düğmesinden bu modu seçebilir veya USB ile bağlanabilirsin.';
@@ -187,10 +242,11 @@
   }
 
   function renderSong() {
-    const tone = songTones.get(selectedSong);
+    const tone = currentSongTone();
     byId('song-details').hidden = !tone;
+    byId('song-title').disabled = toneApplying || !settingsLoaded;
     if (!tone) return;
-    setText('song-active', `${tone.title} · ${tone.section} · ${audioRunning ? 'Canlı pedal tonu' : 'Pedallar hazır'}`);
+    setText('song-active', `${tone.title} · ${tone.section} · ${tone.custom ? 'Kendi tonun' : 'Hazır ton'}`);
     const active = virtualPedals.filter(({enabled}) => enabled).map(({type}) => pedalTypes.get(type).name);
     setText('song-chain', active.length ? active.join(' → ') : 'Tüm pedallar bypass konumunda.');
     const pickup = tone.pickup;
@@ -203,7 +259,7 @@
     setText('song-pickup-hint', pickupTip);
     const button = byId('song-eq');
     const status = byId('song-eq-status');
-    const eq = Object.entries(stratEQ(tone, stratType));
+    const eq = Object.entries(songEQ(tone));
     const values = byId('song-eq-values');
     const signature = eq.map(([, value]) => value).join(',');
     if (values.dataset.signature !== signature) {
@@ -215,10 +271,32 @@
       values.dataset.signature = signature;
     }
     const live = session?.ready && !busy;
+    const idle = live && !session.pendingWrites.size && !directPending;
+    const manual = idle && session.mode === 'manual';
+    const sections = sectionsBySong.get(songPicker.value) ?? [];
+    const next = byId('song-next');
+    next.hidden = sections.length < 2;
+    next.disabled = toneApplying || !manual;
+    if (!next.hidden) {
+      const index = sections.findIndex(({key}) => key === selectedSong);
+      setText('song-next', `Geç: ${sections[(index + 1) % sections.length].section}`);
+    }
+    sectionPicker.disabled = toneApplying;
+    byId('song-strat-type').disabled = toneApplying;
+    byId('song-auto-voice').disabled = toneApplying;
+    byId('song-apply-all').disabled = toneApplying || !manual;
+    setText('song-apply-status', toneApplyMessage || (!live ? 'Amfiye uygulamak için USB ile bağlan.' :
+      session.mode !== 'manual' ? 'Voice ve EQ’yu birlikte uygulamak için Blackstar’da MANUAL’a kısa bas.' :
+      'Voice, EQ ve pedal zincirini birlikte uygular.'));
+    byId('song-save').disabled = toneApplying || toneSaving || !idle ||
+      ![1, ...toneEQParameters].every((id) => ampValues.has(id));
+    byId('song-reset').hidden = !tone.custom;
+    byId('song-reset').disabled = toneApplying || toneSaving;
+    setText('song-save-status', toneSaveMessage || (live ? '' : 'Amfideki Voice ve EQ’yu saklamak için USB ile bağlan.'));
     renderSongVoice(tone, live);
     const pending = live && eq.some(([id]) => session.pendingWrites.has(Number(id)));
     const matching = live && eq.every(([id, value]) => ampValues.get(Number(id)) === value);
-    button.disabled = !live || pending || matching;
+    button.disabled = toneApplying || !live || pending || matching;
     const message = !live ? 'EQ önerisini uygulamak için USB ile bağlan.' : pending ? 'EQ ayarları amfiden doğrulanıyor…' :
       matching ? 'Amfi EQ’su öneriyle eşleşiyor.' : 'Uygula düğmesi bu değerleri Blackstar’a gönderir.';
     if (status.textContent !== message) status.textContent = message;
@@ -454,6 +532,47 @@
     return pedal.type === 8 && Array.isArray(extra) && extra.length === 0 ? [0] : extra;
   }
 
+  function validPedals(pedals) {
+    return Array.isArray(pedals) && pedals.length <= pedalTypes.size && new Set(pedals.map((pedal) => pedal?.type)).size === pedals.length &&
+      pedals.every((pedal) => {
+        if (!pedalTypes.has(pedal?.type) || typeof pedal.enabled !== 'boolean') return false;
+        const extra = restoredControls(pedal);
+        return Array.isArray(extra) && extra.length === pedalTypes.get(pedal.type).controls.length - 1 &&
+          [pedal.amount, ...extra].every((value) => Number.isInteger(value) && value >= 0 && value <= 100);
+      });
+  }
+
+  async function storeCustomTone(remove) {
+    const key = selectedSong;
+    if (!key || toneSaving || toneApplying) return;
+    if (!remove && byId('song-save').disabled) return;
+    const updated = {...customTones};
+    const pickup = Number(byId('song-custom-pickup').value);
+    if (remove) delete updated[key];
+    else updated[key] = {
+      voice: voices[ampValues.get(1)], pickup,
+      eq: Object.fromEntries(toneEQParameters.map((id) => [id, ampValues.get(id)])),
+      pedals: virtualPedals.map((pedal) => ({...pedal, extra: restoredControls(pedal).slice()}))
+    };
+    toneSaving = true;
+    renderSong();
+    try {
+      const data = JSON.stringify(updated);
+      if (window.studioSettings) await window.studioSettings.saveTones(data);
+      else localStorage.setItem('studio.songTones', data);
+      customTones = updated;
+      if (selectedSong === key) {
+        if (remove) await selectSong(key, {autoVoice: false});
+        toneSaveMessage = remove ? 'Hazır pedal zinciri yüklendi. Amfiye göndermek için bölüm tonunu uygula.' : 'Bu bölüm için kendi tonun kaydedildi.';
+      }
+    } catch {
+      if (selectedSong === key) toneSaveMessage = 'Şarkı tonu kaydedilemedi. Tekrar dene.';
+    } finally {
+      toneSaving = false;
+      renderSong();
+    }
+  }
+
   async function restoreSettings() {
     try {
       const stored = window.studioSettings ? await window.studioSettings.load() : localStorage.getItem(settingsKey);
@@ -462,13 +581,14 @@
       balanceLevels = data?.balanceLevels !== false;
       stratType = data?.stratType === 'hss' ? 'hss' : 'sss';
       if (Array.isArray(data?.names) && data.names.length === 6 && data.names.every((name) => typeof name === 'string' && name.trim() && name.length <= 32)) presetNames = data.names;
-      if (Array.isArray(data?.pedals) && data.pedals.length <= pedalTypes.size && new Set(data.pedals.map((pedal) => pedal?.type)).size === data.pedals.length &&
-          data.pedals.every((pedal) => {
-            if (!pedalTypes.has(pedal?.type) || typeof pedal.enabled !== 'boolean') return false;
-            const extra = restoredControls(pedal);
-            return Array.isArray(extra) && extra.length === pedalTypes.get(pedal.type).controls.length - 1 &&
-              [pedal.amount, ...extra].every((value) => Number.isInteger(value) && value >= 0 && value <= 100);
-          })) personalPedals = data.pedals.map((pedal) => ({...pedal, extra: restoredControls(pedal)}));
+      if (validPedals(data?.pedals)) personalPedals = data.pedals.map((pedal) => ({...pedal, extra: restoredControls(pedal)}));
+    } catch {}
+    try {
+      const saved = window.studioSettings ? await window.studioSettings.loadTones() : localStorage.getItem('studio.songTones');
+      customTones = Object.fromEntries(Object.entries(JSON.parse(saved || '{}')).filter(([key, tone]) =>
+        songTones.has(key) && voices.includes(tone?.voice) && Number.isInteger(tone.pickup) && stratPickups[tone.pickup - 1] &&
+        toneEQParameters.every((id) => Number.isInteger(tone.eq?.[id]) && tone.eq[id] >= 0 && tone.eq[id] <= 127) && validPedals(tone.pedals)
+      ).map(([key, tone]) => [key, {...tone, pedals: tone.pedals.map((pedal) => ({...pedal, extra: restoredControls(pedal)}))}]));
     } catch {}
     virtualPedals = personalPedals;
     settingsLoaded = true;
@@ -501,6 +621,7 @@
     const guitar = byId('record-guitar');
     const mac = byId('record-mac');
     const locked = recordingBusy || recording.active;
+    comparison.setBlocked(locked || byId('recording-view').hidden);
     const sourceReady = (guitar.checked || mac.checked) && (!guitar.checked || audioRunning);
     byId('record-folder').disabled = !window.studioAudio || locked;
     setText('record-folder-label', recording.folder || 'Henüz klasör seçilmedi.');
@@ -583,7 +704,7 @@
         diagnostics: byId('record-diagnostics').checked,
         amp: Object.fromEntries(ampValues), mode: session?.mode ?? null, slot: session?.slot ?? null,
         firmware: session?.firmware ?? null, pedals: virtualPedals, balanceLevels,
-        strat: {type: stratType, suggestedPickup: songTones.get(selectedSong)?.pickup ?? null}
+        strat: {type: stratType, suggestedPickup: currentSongTone()?.pickup ?? null}
       });
     });
   }
@@ -735,37 +856,41 @@
     byId('effects').append(card);
   }
 
-  function edit(parameter, value, {manualOnly = false} = {}) {
+  function edit(parameter, value, {manualOnly = false, section = false} = {}) {
     const max = parameter === 1 ? voices.length - 1 : paramViews.get(parameter)?.max;
-    if (!Number.isInteger(value) || max === undefined || value < 0 || value > max || busy) return;
+    if (!Number.isInteger(value) || max === undefined || value < 0 || value > max || busy || (toneApplying && !section)) return false;
     const link = session;
     if (!link) {
       demoValues.set(parameter, value);
       demoSlot = null;
       render();
-      return;
+      return true;
     }
-    if (!link.ready || (parameter === 1 && link.mode === 'patch') || (manualOnly && link.mode !== 'manual')) return;
+    if (!link.ready || (parameter === 1 && link.mode === 'patch') || (manualOnly && link.mode !== 'manual')) return false;
     const expected = {value};
+    const result = new Promise((resolve) => { expected.resolve = resolve; });
+    link.pendingWrites.get(parameter)?.resolve?.(false);
     if (parameter === 1) link.rejectedVoice = null;
     link.pendingWrites.set(parameter, expected);
     ampFeedback = 'USB ayarı doğrulanıyor…';
     render();
     const canSend = manualOnly ? () => link.ready && link.mode === 'manual' && link.pendingWrites.get(parameter) === expected : undefined;
     transmit(link, AmpProtocol.setParameter(parameter, value), canSend).then((sent) => {
-      if (session !== link) return;
+      if (session !== link) { expected.resolve(false); return; }
       if (sent) {
         expected.sent = true;
         verifyWrites(link);
       } else if (link.pendingWrites.get(parameter) === expected) {
         link.pendingWrites.delete(parameter);
+        expected.resolve(false);
         render();
       }
     });
+    return result;
   }
 
   function loadSlot(slot) {
-    if (busy || !Number.isInteger(slot) || slot < 1 || slot > demos.length) return;
+    if (busy || toneApplying || !Number.isInteger(slot) || slot < 1 || slot > demos.length) return;
     const link = session;
     if (!link) {
       const [, voice, gain, bass, middle, treble, isf] = demos[slot - 1];
@@ -777,6 +902,7 @@
     if (!link.ready) return;
     link.ready = false;
     clearReadback(link);
+    for (const pending of link.pendingWrites.values()) pending.resolve?.(false);
     link.pendingWrites.clear();
     link.pendingSlot = slot;
     link.slot = null;
@@ -816,6 +942,7 @@
       link.pendingWrites.delete(parameter);
       checked++;
       const matched = received && ampValues.get(parameter) === expected.value;
+      expected.resolve?.(matched);
       if (!matched) rejected.push(parameter);
       if (parameter === 3 && expected.direct) {
         directMessage = matched ? '' : 'Amfi yeni ses seviyesini doğrulamadı. Amfi ve EQ bölümünden ayarları yeniden oku.';
@@ -949,6 +1076,8 @@
       busy = true;
       clearTimers(link);
       clearReadback(link);
+      for (const pending of link.pendingWrites.values()) pending.resolve?.(false);
+      link.pendingWrites.clear();
       link.device.removeEventListener('inputreport', link.listener);
       ampValues.clear();
       render();
@@ -960,6 +1089,7 @@
   }
 
   async function connect() {
+    if (toneApplying) return;
     if (session) return endSession('Bağlantı kesildi. Demo modu açık.');
     if (!navigator.hid) return setNotice('Bu tarayıcı USB kontrolünü desteklemiyor. Dosyayı Chrome veya Edge ile aç.');
     busy = true;
@@ -1143,9 +1273,9 @@
     saveSettings(true);
   });
   byId('song-eq').addEventListener('click', () => {
-    const tone = songTones.get(selectedSong);
+    const tone = currentSongTone();
     if (!session?.ready || !tone) return;
-    for (const [parameter, value] of Object.entries(stratEQ(tone, stratType))) {
+    for (const [parameter, value] of Object.entries(songEQ(tone))) {
       if (ampValues.get(Number(parameter)) !== value) edit(Number(parameter), value);
     }
   });
@@ -1157,6 +1287,17 @@
   const songPicker = byId('song-title');
   const sectionPicker = byId('song-section');
   const sectionsBySong = new Map();
+  stratPickups.forEach((name, index) => byId('song-custom-pickup').add(new Option(`${index + 1} · ${name}`, index + 1)));
+  byId('song-save').addEventListener('click', () => storeCustomTone(false));
+  byId('song-reset').addEventListener('click', () => storeCustomTone(true));
+  byId('song-apply-all').addEventListener('click', () => applySection(selectedSong));
+  byId('song-next').addEventListener('click', () => {
+    const sections = sectionsBySong.get(songPicker.value);
+    if (!sections || sections.length < 2 || byId('song-next').disabled) return;
+    const next = sections[(sections.findIndex(({key}) => key === selectedSong) + 1) % sections.length];
+    sectionPicker.value = next.key;
+    applySection(next.key);
+  });
   songPicker.disabled = true;
   const songGroups = [];
   const searchKey = (value) => value.toLocaleLowerCase('tr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i');

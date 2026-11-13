@@ -55,6 +55,20 @@
         <h3 id="record-report-heading">Ton ölçümü</h3>
         <p id="record-report-text"></p>
       </section>
+      <section class="record-report" aria-labelledby="compare-heading">
+        <h3 id="compare-heading">A/B ton karşılaştırması</h3>
+        <p class="hint">Aynı riffin iki kaydını seç. Telefon kaydı da kullanabilirsin. İlk notayı eşlemek için başlangıç saniyelerini ayarla. Karşılaştırma Mac’in seçili ses çıkışından çalar.</p>
+        <div class="compare-files">
+          <div><label>A · Önceki kayıt<input id="compare-file-a" type="file" accept="audio/*,.wav,.m4a,.mp3,.aiff,.caf"></label><label>Başlangıç (sn)<input id="compare-offset-a" type="number" min="0" step="0.01" value="0"></label></div>
+          <div><label>B · Yeni kayıt<input id="compare-file-b" type="file" accept="audio/*,.wav,.m4a,.mp3,.aiff,.caf"></label><label>Başlangıç (sn)<input id="compare-offset-b" type="number" min="0" step="0.01" value="0"></label></div>
+        </div>
+        <div class="record-tools">
+          <button type="button" id="compare-play" disabled>Karşılaştırmayı başlat</button>
+          <button type="button" id="compare-a" aria-pressed="true" disabled>A’yı dinle</button>
+          <button type="button" id="compare-b" aria-pressed="false" disabled>B’yi dinle</button>
+        </div>
+        <p class="hint" id="compare-status" role="status">İki ses dosyası seç.</p>
+      </section>
     </section>
     <section class="panel" id="pedals-view" aria-labelledby="pedals-heading">
       <div class="section-head"><h2 id="pedals-heading" tabindex="-1">Sanal pedal zinciri</h2><small>Esinlenilmiş modeller</small></div>
@@ -95,6 +109,13 @@
         <div id="song-details" hidden>
           <p id="song-active" class="song-active"></p>
           <p class="hint" id="song-chain"></p>
+          <div class="song-performance">
+            <div class="song-toolbar song-actions">
+              <button type="button" class="primary" id="song-apply-all">Bölüm tonunu uygula</button>
+              <button type="button" id="song-next" hidden>Sonraki bölüm</button>
+            </div>
+            <p class="hint" id="song-apply-status" role="status"></p>
+          </div>
           <div class="song-strat">
             <div class="song-toolbar">
               <p>Strat manyetiği <strong id="song-pickup"></strong></p>
@@ -123,6 +144,16 @@
               <a class="song-listen" id="song-listen" rel="noreferrer" hidden>Albüm kaydını dinle <span aria-hidden="true">↗</span></a>
             </div>
           </div>
+          <details class="studio-help" id="song-custom">
+            <summary>Kendi tonum</summary>
+            <p class="hint">Bu bölüm için açık pedal zincirini, amfideki Voice ve EQ’yu ve gitarda seçtiğin manyetiği sakla.</p>
+            <div class="song-toolbar song-actions">
+              <label>Kullandığım manyetik<select id="song-custom-pickup"></select></label>
+              <button type="button" id="song-save">Kendi tonum olarak kaydet</button>
+              <button type="button" id="song-reset" hidden>Hazır tona dön</button>
+            </div>
+            <p class="hint" id="song-save-status" role="status"></p>
+          </details>
         </div>
       </div>
       <details class="tuner studio-help" id="tuner">
@@ -183,6 +214,7 @@
 <script src="studio-assets/amp-protocol.js"></script>
 <script src="studio-assets/pedal-models.js"></script>
 <script src="studio-assets/guitar-tuner.js"></script>
+<script src="studio-assets/tone-comparison.js"></script>
 <script src="studio-assets/studio.js"></script>
 </body>
 </html>

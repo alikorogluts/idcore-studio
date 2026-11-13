@@ -40,6 +40,10 @@ USB komutları için protokol başvurusu. [ASTRO Blackstar](https://github.com/S
 
 **EQ önerisini uygula**, seçilen bölümün başlangıç değerlerini Blackstar’a gönderir ve amfiden geri okur. **Albüm kaydını dinle**, şarkının yayımlanmış sürümünü YouTube Music’te açar. Bu kayıt dinleme referansıdır. Preset değerleri miks içinden ölçülmüş gitar EQ’su veya stüdyo ayarı değildir.
 
+**Bölüm tonunu uygula** açık pedal zincirini ve seçili tonun Voice/EQ ayarlarını birlikte uygular. Blackstar’ın MANUAL ışığı yanarken kullan. **Geç** düğmesi sonraki bölümü aynı şekilde uygular ve fiziksel manyetik konumunu gösterir. **Kendi tonum olarak kaydet** açık pedal zincirini, amfiden okunan Voice/EQ’yu ve seçtiğin manyetiği o bölüm için Mac’te saklar.
+
+**Kayıt → A/B ton karşılaştırması** aynı riffin iki yerel ses dosyasını Mac’in seçili ses çıkışından çalar. Başlangıç saniyeleriyle ilk notaları hizala. Studio duyulur kısımların RMS seviyelerini düşük olana eşitler. Çalarken A ve B arasında geçebilirsin. Telefon kaydı için M4A veya WAV kullanabilirsin.
+
 **Akort ve entonasyon** bölümünde en kalın tel 6, en ince tel 1 olarak gösterilir. Standart akortta açık teller E2–A2–D3–G3–B3–E4, Drop D’de 6. tel D2’dir. **12. perde** modunda önce harmoniği, sonra normal kuvvetle basılan notayı ölç. Pozitif farkta telin titreşen boyu uzatılır, negatif farkta kısaltılır. Her köprü ayarından sonra açık teli yeniden akort et. [Fender entonasyon kılavuzu](https://www.fender.com/articles/maintenance/intonation-101)
 
 **Önerilen amfi Voice**, her şarkı bölümüne göre bir başlangıç ayarı gösterir. Blackstar’ın MANUAL ışığı yanarken **Voice’u uygula** düğmesini kullan veya **Şarkıyla otomatik seç** seçeneğini aç. Uygulama Voice değerini USB’den geri okur. Amfi yuvasını ve EQ’yu kendi kontrollerinden seçebilirsin.

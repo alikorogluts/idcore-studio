@@ -23,7 +23,9 @@ private let nativeTransport = """
   window.studioSettings = {
     load: () => native('loadSettings', null),
     save: (data) => native('saveSettings', data),
-    preview: (data) => native('previewSettings', data)
+    preview: (data) => native('previewSettings', data),
+    loadTones: () => native('loadTones', null),
+    saveTones: (data) => native('saveTones', data)
   };
   window.studioAudio = {
     start: () => native('startAudio', null), stop: () => native('stopAudio', null),
@@ -310,6 +312,15 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
             }
             if command == "saveSettings" { UserDefaults.standard.set(data, forKey: settingsKey) }
             else { settings.apply(to: audio) }
+            replyHandler(true, nil)
+        case "loadTones":
+            replyHandler(UserDefaults.standard.string(forKey: "studio.songTones") ?? "{}", nil)
+        case "saveTones":
+            guard let data = body["data"] as? String, data.utf8.count <= 180_000 else {
+                replyHandler(nil, "Şarkı tonları kaydedilemedi.")
+                return
+            }
+            UserDefaults.standard.set(data, forKey: "studio.songTones")
             replyHandler(true, nil)
         case "startAudio": startAudio(reply: replyHandler)
         case "stopAudio": stopAudio(); replyHandler(true, nil)

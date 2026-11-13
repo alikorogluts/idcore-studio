@@ -159,6 +159,9 @@
   .song-voice { padding-block: 8px; border-bottom: 1px solid #465438; font-size: 12px; }
   .song-voice strong { color: var(--accent); margin-left: 4px; }
   .song-strat, .song-eq { padding-block: 8px; font-size: 12px; }
+  .song-performance { padding-bottom: 8px; border-bottom: 1px solid #465438; }
+  .song-performance button, #song-custom button { padding: 7px 9px; font-size: 12px; }
+  .song-performance .hint, #song-custom .hint { margin-top: 5px; }
   .song-strat { border-bottom: 1px solid #465438; }
   .song-strat .song-toolbar { justify-content: space-between; }
   .song-strat .song-toolbar label { flex: 0 1 auto; }
@@ -187,6 +190,12 @@
   .record-report { margin-top: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
   .record-report h3 { margin: 0; font-size: 13px; }
   .record-report p { margin: 6px 0 0; font-size: 12px; white-space: pre-line; }
+  .compare-files { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 10px; margin-top: 9px; }
+  .compare-files > div { padding: 8px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+  .compare-files label { display: grid; gap: 4px; font-size: 12px; }
+  .compare-files label + label { margin-top: 8px; }
+  .compare-files input { min-width: 0; width: 100%; color: inherit; font: inherit; }
+  .compare-files input[type=number] { background: #151a14; border: 1px solid var(--line); border-radius: 5px; padding: 4px; width: 7em; }
   .wah-live { font-size: 11px; color: var(--muted); }
   #patch-state { margin: -4px 0 9px; }
   .level-help { display: grid; gap: 7px; margin: 8px 0 3px; font-size: 12px; }

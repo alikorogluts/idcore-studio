@@ -18,4 +18,5 @@ xcrun swiftc -target "$(uname -m)-apple-macos12.0" -module-cache-path "$scratch/
 if command -v node >/dev/null; then
     node "$root/Tests/tuner-check.mjs"
     node "$root/Tests/song-tones-check.mjs"
+    node "$root/Tests/tone-comparison-check.mjs"
 fi
