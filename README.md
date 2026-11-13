@@ -1,57 +1,93 @@
+<p align="center">
+  <img src="docs/images/kapak.jpg" alt="ID:CORE Studio — Blackstar’ını bir pedal panosuna dönüştür" width="100%">
+</p>
+
 # ID:CORE Studio
 
-Blackstar ID:CORE Stereo 10 V4 için macOS USB pedal ve ton kontrolü. macOS 12 veya sonrası ve Xcode Command Line Tools gerekir.
+**Blackstar ID:CORE Stereo 10 V4 için macOS’te sanal pedal panosu, şarkı tonları ve kayıt.**
 
-## Derle ve çalıştır
+Blackstar’ını USB ile Mac’e bağla. Duman’dan bir şarkı seç, temiz girişten overdrive solosuna tek düğmeyle geç ve tonu amfinin kendi hoparlöründen duy. Gitarına göre yaptığın ayarı o bölüme kaydet, bir sonraki provada kaldığın yerden devam et.
+
+**84 şarkı · 120 bölüm tonu · 12 sanal pedal**
+
+[Kur ve ilk tonunu çal](#hızlı-başlangıç) · [Kayıt ve A/B](#kayıt-ve-ab) · [Uyumluluk](#uyumluluk-ve-testler)
+
+## Temiz girişten soloya tek düğmeyle geç
+
+Yanıbaşımdan’ın temiz bölümünde Strat’ta **4. konum (orta + sap)** ile başla. Solo geldiğinde **Geç** düğmesiyle TS9’lu zinciri, Crunch Voice’u ve solo EQ’sunu çağır. Studio ayarları Blackstar’dan geri okuyup doğrular ve gitarda **1. konuma (köprü)** geçmeni hatırlatır.
+
+<p align="center">
+  <img src="docs/images/sarki-tonu.png" alt="Yanıbaşımdan solosu için pedal zinciri, köprü manyetiği önerisi, Crunch Voice ve Blackstar EQ değerleri" width="760">
+</p>
+
+Yedi stüdyo albümünde şarkı veya albüm adına göre ara. Hazır tonlar, Blackstar ve Strat için çalınabilir başlangıç ayarlarıdır. **Albüm kaydını dinle** düğmesi yayımlanmış parçayı açar. Kayıt kulak referansıdır, uygulamadaki EQ değerleri o miks üzerinden çıkarılmaz. [Duman’ın resmî diskografisi](https://dumanlive.com/albumler/grup-albumler)
+
+**Kendi tonum olarak kaydet** ile pedal zincirini, Voice’u, EQ’yu ve kullandığın manyetik konumunu bölüm bazında Mac’inde sakla. Standart Strat seçicisinde 1 köprü, 5 sap ucudur. **SSS / HSS** seçimi köprü manyetiğine göre öneriyi uyarlar. [Fender manyetik seçici kılavuzu](https://www.fender.com/articles/instruments/sounds-aplenty-the-stratocaster-pickup-selector-switch)
+
+## Pedallarını kur, tonu Blackstar’dan duy
+
+Overdrive, kompresör, wah, phaser, Uni-Vibe, tremolo ve delay’i aynı zincirde kullan. Pedalları sırala, tek tek açıp kapat ve ayarları çalarken değiştir. **Clean ve drive sesini dengele** ile iki ton arasındaki seviye farkını azalt. Son dinleme seviyesini **Pedal Volume** ile ayarla.
+
+<p align="center">
+  <img src="docs/images/pedal-panosu.png" alt="Suhr Koji Comp, Ibanez TS9 ve EHX Stereo Memory Man modelleriyle örnek sanal pedal zinciri" width="760">
+</p>
+
+**Wah** elle, sürekli döngüyle veya pena vuruşuna tepki vererek çalışır. **Akort ve entonasyon** paneli Standart ve Drop D akordu ile 12. perde harmoniği ve basılı nota karşılaştırmasını içerir.
+
+## Kayıt ve A/B
+
+**Gitarını ve Mac’te çalan eşliği ayrı WAV dosyalarına kaydet.** Kaydı istediğin zaman durdur. İki kaynak da açıksa Studio ortak başlangıcı hizalar. Blackstar bağlantısı kesilirse gitar dosyası kapanır ve Mac kaydı devam eder.
+
+<p align="center">
+  <img src="docs/images/kayit-ve-ab.png" alt="Studio kayıt paneli, ayrı gitar ve Mac sesi kaynakları, ton ölçümü ve A/B karşılaştırması" width="760">
+</p>
+
+- **Ton ölçümü** aynı riffin ham gitar, Blackstar EQ ve pedal çıkışı seviyelerini karşılaştırır. Sonucu ekranda ve `Ton-Olcumu.txt` dosyasında gösterir.
+- **A/B ton karşılaştırması** iki yerel kaydı aynı dinleme seviyesinde çalar. Bir tarafa telefonla aldığın hoparlör kaydını koyabilir, başlangıç saniyeleriyle ilk notaları hizalayabilirsin. A/B, Mac’in seçili ses çıkışını kullanır.
+
+<sub>Arayüz görselleri Studio 0.16’dan alındı ve örnek veriler kullanıyor.</sub>
+
+## Hızlı başlangıç
+
+Blackstar ID:CORE Stereo 10 V4, veri aktarabilen bir USB kablosu ve **macOS 12 veya sonrası** gerekir. Derleme için **macOS 14.2 veya daha yeni SDK içeren Xcode Command Line Tools** kullan. Mac’te çalan eşliği ayrıca kaydetmek için macOS 14.2 veya sonrası ve sistem sesi kaydı izni gerekir.
 
 ```sh
+git clone https://github.com/alikorogluts/idcore-studio.git
+cd idcore-studio
 ./Scripts/build.sh
 open "build/IDCORE Studio.app"
+```
+
+1. Blackstar’ı açıp USB ile bağla. **USB ile bağlan → Sanal pedalları aç** düğmelerini kullan. macOS sorarsa USB gitar girişini okuyabilmesi için mikrofon izni ver.
+2. Bir şarkı ve bölüm seç. Blackstar’ın **MANUAL** ışığı yanarken **Bölüm tonunu uygula** düğmesine bas.
+3. Sanal pedalları tek başına duymak için **Doğrudan sesi kıs**. **Pedal Volume**’ü düşükten başlayarak artır. Amfinin kendi gitar sesine dönmek için **Doğrudan sesi geri aç**.
+
+Bağlantı açılmıyorsa Blackstar Architect’i kapatıp yeniden dene. Ses dönüşünü kontrol etmek için **USB çıkışını dene** düğmesi Blackstar’a kısa bir ton gönderir.
+
+## Uyumluluk ve testler
+
+| | Durum |
+| --- | --- |
+| **Amfi** | Blackstar ID:CORE Stereo 10 V4 üzerinde denendi. |
+| **Canlı ses** | Blackstar ön katı → Mac’te sanal pedallar → USB ile Blackstar hoparlörleri. |
+| **Gecikme** | Denenen Blackstar kurulumunda 48 kHz ve 128 örnekte Core Audio USB giriş–çıkış tahmini **7,9 ms**. |
+| **Kayıt** | Bağlı amfide **3 dakika 12 saniye** gitar ve Mac sesi kaydı doğrulandı. |
+| **Sahne** | Bağlı amfide Yanıbaşımdan’ın temiz tonundan solosuna geçiş doğrulandı. Tam set provası ve fiziksel USB kopma testi bekliyor. |
+
+```sh
 ./Scripts/test.sh
 ```
 
-- `Sources/IDCOREStudio.swift` pencereyi, USB HID iletişimini ve web arayüzü bağlantısını yönetir.
-- `Sources/StudioAudio.c` Core Audio akışını, pedal modellerini, akordu ve kayıt tamponunu yönetir.
-- `Sources/StudioRecording.swift` WAV dosyalarını seçilen klasöre kayıt sırasında yazar.
-- `Sources/StudioSystemAudio.swift` isteğe bağlı Mac sesi kaydını yönetir.
-- `Resources/studio-assets` arayüzü, USB komutlarını, pedal kontrollerini ve şarkı presetlerini içerir.
+<details>
+<summary>Teknik yapı ve kaynaklar</summary>
 
-## Kayıt ve USB sesini deneme
+- `Sources/IDCOREStudio.swift` macOS uygulamasını ve USB HID iletişimini yönetir.
+- `Sources/StudioAudio.c` Core Audio, pedal işleme, akort ve kayıt tamponunu içerir.
+- `Sources/StudioRecording.swift` ve `Sources/StudioSystemAudio.swift` WAV yazımı ve isteğe bağlı Mac sesi kaydını yönetir.
+- `Resources/studio-assets` şarkı tonlarını, pedal kontrollerini ve arayüzü içerir.
+- Blackstar’ın USB kanal 3’ü ön kat sinyalini sağlar. Studio sanal zincirin dönüşünü USB 1/2’ye gönderir. [Blackstar ID:CORE V4 kılavuzu](https://www.blackstaramps.com/wp-content/uploads/2024/01/155300M-VA-1-IDCORE-V4-OWNERS-MANUAL.pdf) · [ASTRO Blackstar USB protokolü](https://github.com/SirYasko/ASTRO-Blackstar)
+- Pedal modelleri orijinal cihazlardan esinlenir. [Ibanez TS9](https://www.ibanez.com/usa/products/detail/ts9_99.html) · [EHX Germanium OD](https://www.ehx.com/wp-content/uploads/2021/01/germanium-od-manual.pdf) · [Suhr Koji Comp](https://www.suhr.com/wp-content/uploads/2016/10/Koji-User-Guide.pdf) · [EHX Stereo Memory Man](https://www.ehx.com/wp-content/uploads/2020/11/stereo-memory-man-with-hazarai.pdf)
 
-1. **Kayıt** sekmesinde hedef klasörü seç. **Sanal gitar** kaydı için **Sanal sesi aç**. Mac’te çalan eşliği almak için **Mac sesi**’ni işaretle. Bu seçenek macOS 14.2 ve sonrası ile sistem sesi kaydı izni gerektirir.
-2. **Kaydı başlat** ve çalmayı bitirince **Kaydı durdur**. Her kaynak ayrı bir WAV üretir. İki kaynağın başlangıcı Mac’in ses saatine göre hizalanır. Blackstar kesilirse gitar dosyası kapanır ve Mac kaydı devam eder. `Zamanlama.json` iki parçanın ölçülen başlangıç ve bitiş bilgilerini içerir.
-3. Sanal pedal etkisini tek başına duymak için **Doğrudan sesi kıs**. Studio normal çıkışta veya **Bağlantıyı kes** düğmesinde önceki doğrudan seviyeyi geri yükler. Beklenmedik USB kopmasında, aynı amfi bağlı ve seviye hâlâ sıfırsa **Doğrudan sesi geri aç** düğmesi önceki seviyeyi getirir. **USB çıkışını dene**, Blackstar’a kısa bir test tonu gönderir. Ton duyulmuyorsa Blackstar’da TAP’ı tutup Volume ile dinleme seviyesini kontrol et.
+</details>
 
-**Ton ölçümü** açıkken aynı riffi çal. Studio ham gitarı, Blackstar ön kat ve EQ sinyalini ve pedal çıkışını ayrı dosyalara yazar. Kayıt sonunda tepe seviyeleri ve seviye önerisi ekranda ve `Ton-Olcumu.txt` dosyasında görünür. Hoparlör ve oda etkisi için telefonla aynı riffi ayrıca kaydedebilirsin.
-
-Studio, başka bir uygulama Blackstar’ı kullanmıyorsa canlı ses için 128 örneklik blok ister. Sanal pedal ekranı kullanılan blok boyutunu ve Core Audio’nun USB giriş–çıkış süresi tahminini gösterir. Kayıt yazımı ve ton ölçümü ayrı çalışır. [Apple Core Audio zaman damgaları](https://developer.apple.com/documentation/coreaudio/audiodeviceioproc?language=objc)
-
-Blackstar kılavuzunda USB kanal 3, dahili efektlerden ve hoparlör kabini emülasyonundan önceki ön kat olarak tanımlanır. Sanal pedallar bu sinyali işler ve USB 1/2 üzerinden Blackstar hoparlörlerine gönderir. [Blackstar ID:CORE V4 kılavuzu](https://www.blackstaramps.com/wp-content/uploads/2024/01/155300M-VA-1-IDCORE-V4-OWNERS-MANUAL.pdf)
-
-Şarkı tonları yazılımda yeniden oluşturulmuş başlangıç ayarlarıdır. TS9, Germanium OD, Koji Comp ve Memory Man kontrolleri üretici belgelerine dayanır. Riff, manyetik seçimi, amfi ve hoparlör kaydı üzerinden ince ayar yapılabilir. [Ibanez TS9](https://www.ibanez.com/usa/products/detail/ts9_99.html) · [EHX Germanium OD](https://www.ehx.com/wp-content/uploads/2021/01/germanium-od-manual.pdf) · [Suhr Koji Comp](https://www.suhr.com/wp-content/uploads/2016/10/Koji-User-Guide.pdf) · [EHX Memory Man](https://www.ehx.com/wp-content/uploads/2020/11/stereo-memory-man-with-hazarai.pdf)
-
-USB komutları için protokol başvurusu. [ASTRO Blackstar](https://github.com/SirYasko/ASTRO-Blackstar)
-
-## Şarkı ve akort seçimi
-
-**Şarkı ara** alanı yedi stüdyo albümünde parça ve albüm adına göre arar. Şarkıyı ve varsa giriş, ritim veya solo bölümünü seçtiğinde sanal pedal zinciri yüklenir. Amfinin donanım yuvaları ayrı çalışır. [Duman’ın resmî diskografisi](https://dumanlive.com/albumler/grup-albumler)
-
-**Strat manyetiği** önerisi standart beş konumlu seçicide köprü ucundan (1) sap ucuna (5) numaralanır. Gitarın köprü manyetiği tekliyse **SSS**, çift bobinliyse **HSS** seç. HSS köprü konumu için küçük bir EQ uyarlaması gösterilir. Konumu gitarda elle seç. [Fender Stratocaster manyetik seçicisi](https://www.fender.com/articles/instruments/sounds-aplenty-the-stratocaster-pickup-selector-switch)
-
-**EQ önerisini uygula**, seçilen bölümün başlangıç değerlerini Blackstar’a gönderir ve amfiden geri okur. **Albüm kaydını dinle**, şarkının yayımlanmış sürümünü YouTube Music’te açar. Bu kayıt dinleme referansıdır. Preset değerleri miks içinden ölçülmüş gitar EQ’su veya stüdyo ayarı değildir.
-
-**Bölüm tonunu uygula** açık pedal zincirini ve seçili tonun Voice/EQ ayarlarını birlikte uygular. Blackstar’ın MANUAL ışığı yanarken kullan. **Geç** düğmesi sonraki bölümü aynı şekilde uygular ve fiziksel manyetik konumunu gösterir. **Kendi tonum olarak kaydet** açık pedal zincirini, amfiden okunan Voice/EQ’yu ve seçtiğin manyetiği o bölüm için Mac’te saklar.
-
-**Kayıt → A/B ton karşılaştırması** aynı riffin iki yerel ses dosyasını Mac’in seçili ses çıkışından çalar. Başlangıç saniyeleriyle ilk notaları hizala. Studio duyulur kısımların RMS seviyelerini düşük olana eşitler. Çalarken A ve B arasında geçebilirsin. Telefon kaydı için M4A veya WAV kullanabilirsin.
-
-**Akort ve entonasyon** bölümünde en kalın tel 6, en ince tel 1 olarak gösterilir. Standart akortta açık teller E2–A2–D3–G3–B3–E4, Drop D’de 6. tel D2’dir. **12. perde** modunda önce harmoniği, sonra normal kuvvetle basılan notayı ölç. Pozitif farkta telin titreşen boyu uzatılır, negatif farkta kısaltılır. Her köprü ayarından sonra açık teli yeniden akort et. [Fender entonasyon kılavuzu](https://www.fender.com/articles/maintenance/intonation-101)
-
-**Önerilen amfi Voice**, her şarkı bölümüne göre bir başlangıç ayarı gösterir. Blackstar’ın MANUAL ışığı yanarken **Voice’u uygula** düğmesini kullan veya **Şarkıyla otomatik seç** seçeneğini aç. Uygulama Voice değerini USB’den geri okur. Amfi yuvasını ve EQ’yu kendi kontrollerinden seçebilirsin.
-
-## Clean/Drive seviyesi ve Wah
-
-**Clean ve drive sesini dengele**, ham gitar ile Blackstar’ın ön kat seviyesini karşılaştırıp telafiyi yumuşakça uygular. En fazla +18 dB telafi eder. Son ses **Pedal Volume** ile ayarlanır.
-
-Wah, diğer pedallar gibi zincire eklenir. **Döngü** modunda filtre sürekli hareket eder. **Otomatik** mod pena vuruşuna tepki verir, **Manuel** modda kaydırıcı konumu belirler. Sanal pedalların etkisini tek başına duymak için Blackstar’ın doğrudan Volume’unu kıs.
-
-Blackstar’ın USB ön kat kanalı dahili efektlerden önce gelir. Şarkı tonlarındaki zaman ve modülasyon efektlerini sanal zincir sağlar. [Blackstar kılavuzu](https://blackstaramps.com/wp-content/uploads/2024/01/155300M-VA-1-IDCORE-V4-OWNERS-MANUAL.pdf)
+<sub>ID:CORE Studio bağımsız bir projedir. Blackstar, Fender, Duman ve pedal markalarının adları uyumluluk, ton referansı ve model açıklamaları için kullanılır.</sub>
