@@ -6,7 +6,7 @@ struct RecordingCheck {
         let destination = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         let rate: UInt32 = 48_000
         let frames: UInt32 = 4096
-        let blocks = 120
+        let blocks = 2_120
         let samples: [Float] = Array(repeating: [0.1, 0.2, 0.3, -0.4], count: Int(frames)).flatMap { $0 }
         let checks: [(String, [Int], [Float])] = [
             ("Ham-Gitar.wav", [0], [0.1]), ("Blackstar-EQ.wav", [1], [0.2]),
@@ -26,6 +26,6 @@ struct RecordingCheck {
                 precondition(abs(buffer.floatChannelData![channel][0] - sample) < 0.00001)
             }
         }
-        print("Streaming WAV: mono diagnostic and stereo guitar tracks, 10.24 seconds with matching samples")
+        print("Streaming WAV: mono diagnostic and stereo guitar tracks, 180.91 seconds with matching samples")
     }
 }

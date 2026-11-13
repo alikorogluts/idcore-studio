@@ -10,12 +10,13 @@ private let nativeTransport = """
   const native = (command, data) => window.webkit.messageHandlers.amp.postMessage({command, data});
   const device = new EventTarget();
   device.opened = false;
-  device.open = async () => { await native('open', null); device.opened = true; };
+  device.open = async () => { device.directBefore = await native('open', null); device.opened = true; };
   device.close = async () => { await native('close', null); device.opened = false; };
   device.sendReport = async (reportId, bytes) => {
     if (reportId !== 0 || !device.opened) throw new Error('USB bağlantısı açık değil.');
     await native('send', Array.from(bytes));
   };
+  device.setDirectVolume = (before, after) => native('directVolume', [before, after]);
   events.requestDevice = async () => (await native('detect', null)) ? [device] : [];
   Object.defineProperty(navigator, 'hid', {value: events});
   window.studioNative = true;
@@ -87,9 +88,11 @@ private struct StudioSettings: Decodable {
 
 final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate {
     weak var view: WKWebView?
-    private let manager = IOHIDManagerCreate(kCFAllocatorDefault, 0)
     private let reportBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 64)
     private var device: IOHIDDevice?
+    private var volumeKey: String?
+    private var lastVolume: UInt8?
+    private var mutedHere = false
     private let loop = CFRunLoopGetMain()!
     private let settingsKey = "studio.virtualRig"
     private let logger = Logger(subsystem: "local.idcore.studio", category: "Blackstar")
@@ -98,14 +101,11 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
     private var audioGeneration = 0
     private var audioRunning = false
     private var audioStarting = false
+    private var nextRouteCheck = 0.0
 
     override init() {
         super.init()
         StudioAudioSetLevel(audio, 20)
-        IOHIDManagerSetDeviceMatching(manager, [
-            kIOHIDVendorIDKey: 0x27d4,
-            kIOHIDProductIDKey: 0x0013
-        ] as CFDictionary)
     }
 
     deinit {
@@ -115,49 +115,113 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
     }
 
     private func findDevice() -> IOHIDDevice? {
-        (IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice>)?.first
+        // Refresh matching after a USB replug or when Architect has just released the interface.
+        let discovery = IOHIDManagerCreate(kCFAllocatorDefault, 0)
+        IOHIDManagerSetDeviceMatching(discovery, [
+            kIOHIDVendorIDKey: 0x27d4,
+            kIOHIDProductIDKey: 0x0013
+        ] as CFDictionary)
+        return (IOHIDManagerCopyDevices(discovery) as? Set<IOHIDDevice>)?.first
     }
 
     private func openDevice() -> Bool {
         if device != nil { return true }
-        guard let amp = findDevice(), IOHIDDeviceOpen(amp, 0) == kIOReturnSuccess else { return false }
+        guard let amp = findDevice() else { return false }
+        let result = IOHIDDeviceOpen(amp, 0)
+        guard result == kIOReturnSuccess else { logger.error("HID open failed: \(result)"); return false }
         device = amp
+        let serial = IOHIDDeviceGetProperty(amp, kIOHIDSerialNumberKey as CFString) as? String
+        let location = IOHIDDeviceGetProperty(amp, kIOHIDLocationIDKey as CFString) as? NSNumber
+        if let serial, !serial.isEmpty { volumeKey = "studio.directVolume.serial.\(serial)" }
+        else if let location { volumeKey = "studio.directVolume.usb.\(location)" }
+        lastVolume = nil
+        mutedHere = false
         let owner = Unmanaged.passUnretained(self).toOpaque()
         IOHIDDeviceScheduleWithRunLoop(amp, loop, CFRunLoopMode.commonModes.rawValue)
         IOHIDDeviceRegisterInputReportCallback(amp, reportBuffer, 64, { context, result, _, _, reportId, bytes, count in
             guard let context, result == kIOReturnSuccess, count > 0, count <= 64 else { return }
             let bridge = Unmanaged<AmpBridge>.fromOpaque(context).takeUnretainedValue()
-            let payload = UnsafeBufferPointer(start: bytes, count: count).map(String.init).joined(separator: ",")
+            let report = UnsafeBufferPointer(start: bytes, count: count)
+            if reportId == 0 { bridge.observeVolume(report) }
+            let payload = report.map(String.init).joined(separator: ",")
             bridge.view?.evaluateJavaScript("window.studioReceive(\(reportId), [\(payload)]);")
         }, owner)
         IOHIDDeviceRegisterRemovalCallback(amp, { context, _, _ in
             guard let context else { return }
             let bridge = Unmanaged<AmpBridge>.fromOpaque(context).takeUnretainedValue()
-            bridge.closeDevice()
+            bridge.closeDevice(restore: false, reason: "Blackstar bağlantısı kesildi")
             bridge.view?.evaluateJavaScript("window.studioDisconnect();")
         }, owner)
         return true
     }
 
-    func closeDevice() {
-        stopAudio()
+    private var previousVolume: UInt8? {
+        guard let volumeKey, let value = UInt8(exactly: UserDefaults.standard.integer(forKey: volumeKey)),
+              (1...127).contains(value) else { return nil }
+        return value
+    }
+
+    private func observeVolume(_ report: UnsafeBufferPointer<UInt8>) {
+        guard report.count >= 5 else { return }
+        if (report[0] == 3 && report[1] == 1 && (40...41).contains(report[3])) ||
+            (report[0] == 2 && report[1] == 6 && (1...6).contains(report[2]) && report[3] != 60) {
+            mutedHere = false
+            lastVolume = nil
+        }
+        guard report[0] == 3 else { return }
+        let value: UInt8
+        if report[3] == 42 && report.count >= 44 && report[5] <= 127 { value = report[6] }
+        else if report[1] == 3 && (1...2).contains(report[3]) { value = report[4] }
+        else { return }
+        guard value <= 127 else { return }
+        lastVolume = value
+        if value > 0 {
+            mutedHere = false
+            if let volumeKey { UserDefaults.standard.removeObject(forKey: volumeKey) }
+        }
+    }
+
+    private func setDirectVolume(_ value: UInt8, on amp: IOHIDDevice) -> Bool {
+        var report = [UInt8](repeating: 0, count: 64)
+        report.replaceSubrange(0..<5, with: [3, 3, 0, 1, value])
+        let result = send(report, to: amp)
+        if result == kIOReturnSuccess { lastVolume = nil }
+        return result == kIOReturnSuccess
+    }
+
+    private func send(_ report: [UInt8], to amp: IOHIDDevice) -> IOReturn {
+        let result = report.withUnsafeBufferPointer { bytes in
+            IOHIDDeviceSetReport(amp, kIOHIDReportTypeOutput, 0, bytes.baseAddress!, bytes.count)
+        }
+        if result != kIOReturnSuccess { logger.error("HID write failed: \(result), command \(report[0]), parameter \(report[1])") }
+        return result
+    }
+
+    func closeDevice(restore: Bool = true, reason: String = "Blackstar USB bağlantısı kapatıldı") {
+        stopAudio(reason: reason)
         guard let amp = device else { return }
+        if restore, mutedHere, lastVolume == 0, let previousVolume {
+            _ = setDirectVolume(previousVolume, on: amp)
+        }
         device = nil
+        volumeKey = nil
+        lastVolume = nil
+        mutedHere = false
         IOHIDDeviceUnscheduleFromRunLoop(amp, loop, CFRunLoopMode.commonModes.rawValue)
         IOHIDDeviceClose(amp, 0)
     }
 
-    private func stopAudio() {
+    private func stopAudio(reason: String = "Sanal gitar kapatıldı") {
         audioGeneration += 1
         audioRunning = false
         audioStarting = false
         StudioAudioStop(audio)
-        recording.end(guitarOnly: true)
+        recording.stopGuitar(reason: reason)
     }
 
     func shutdown() {
-        closeDevice()
         recording.end()
+        closeDevice()
     }
 
     private func audioError(_ status: Int32) -> String {
@@ -188,6 +252,7 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
             }
             let result = StudioAudioStart(self.audio)
             self.audioRunning = result == 0
+            self.nextRouteCheck = 0
             if self.audioRunning { self.logger.info("Blackstar USB audio started") }
             else { self.logger.error("Blackstar USB audio failed: \(result)") }
             reply(self.audioRunning, self.audioRunning ? nil : self.audioError(result))
@@ -268,18 +333,23 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
             recording.chooseFolder(window: window, reply: replyHandler)
         case "revealRecording": recording.reveal(); replyHandler(true, nil)
         case "audioMeter":
-            let route = StudioAudioCheckOutput(audio)
-            if audioRunning && route != 0 {
-                stopAudio()
-                logger.error("Blackstar USB audio stopped: \(route)")
-                replyHandler(["stopped": audioError(route)], nil)
-                return
+            let now = ProcessInfo.processInfo.systemUptime
+            if audioRunning && now >= nextRouteCheck {
+                nextRouteCheck = now + 1
+                let route = StudioAudioCheckOutput(audio)
+                if route != 0 {
+                    stopAudio(reason: "Blackstar USB sesi kesildi")
+                    logger.error("Blackstar USB audio stopped: \(route)")
+                    replyHandler(["stopped": audioError(route)], nil)
+                    return
+                }
             }
             let tune = body["data"] as? Bool == true
             replyHandler([
                 "input": StudioAudioInputLevel(audio), "output": StudioAudioOutputLevel(audio),
                 "matchPermille": StudioAudioLevelMatchPermille(audio), "wahHz": StudioAudioWahHz(audio),
-                "frequency": tune ? StudioAudioReadPitch(audio) : 0
+                "frequency": tune ? StudioAudioReadPitch(audio) : 0,
+                "bufferFrames": StudioAudioBufferFrames(audio), "latencyMicros": StudioAudioLatencyMicros(audio)
             ], nil)
         case "audioLevel":
             guard let value = body["data"] as? Int, (0...100).contains(value) else { replyHandler(nil, "Geçersiz çıkış seviyesi."); return }
@@ -288,7 +358,19 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
         case "detect": replyHandler(findDevice() != nil, nil)
         case "open":
             let opened = openDevice()
-            replyHandler(opened, opened ? nil : "Amfi bağlantısı açılamadı.")
+            replyHandler(opened ? Int(previousVolume ?? 0) : nil, opened ? nil : "Amfi bağlantısı açılamadı.")
+        case "directVolume":
+            guard let amp = device, let volumeKey, let values = body["data"] as? [Int], values.count == 2,
+                  let before = UInt8(exactly: values[0]), let after = UInt8(exactly: values[1]), lastVolume == before,
+                  (after == 0 && (1...127).contains(before)) || (before == 0 && after == previousVolume) else {
+                replyHandler(nil, "Amfi ses seviyesi değişti. Ayarları yeniden okuyup tekrar dene.")
+                return
+            }
+            if after == 0 { UserDefaults.standard.set(Int(before), forKey: volumeKey) }
+            let sent = setDirectVolume(after, on: amp)
+            if sent { mutedHere = after == 0 }
+            else if after == 0 { UserDefaults.standard.removeObject(forKey: volumeKey) }
+            replyHandler(sent, sent ? nil : "Amfi ses komutunu almadı.")
         case "close":
             closeDevice()
             replyHandler(true, nil)
@@ -302,10 +384,11 @@ final class AmpBridge: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDe
                 replyHandler(nil, "USB komutu desteklenmiyor.")
                 return
             }
-            let result = report.withUnsafeBufferPointer { bytes in
-                IOHIDDeviceSetReport(amp, kIOHIDReportTypeOutput, 0, bytes.baseAddress!, bytes.count)
+            if report[0] == 2 || (report[0] == 3 && report[1] == 3) {
+                mutedHere = false
+                lastVolume = nil
             }
-            if result != kIOReturnSuccess { logger.error("HID write failed: \(result), command \(report[0]), parameter \(report[1])") }
+            let result = send(report, to: amp)
             replyHandler(result == kIOReturnSuccess, result == kIOReturnSuccess ? nil : "Amfi komutu alınamadı.")
         default: replyHandler(nil, "Geçersiz USB isteği.")
         }

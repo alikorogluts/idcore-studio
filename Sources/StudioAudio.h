@@ -23,18 +23,25 @@ uint32_t StudioAudioLevelMatchPermille(const StudioAudio *audio);
 uint32_t StudioAudioWahHz(const StudioAudio *audio);
 uint32_t StudioAudioInputLevel(const StudioAudio *audio);
 uint32_t StudioAudioOutputLevel(const StudioAudio *audio);
+uint32_t StudioAudioBufferFrames(const StudioAudio *audio);
+uint32_t StudioAudioLatencyMicros(const StudioAudio *audio);
 double StudioAudioReadPitch(const StudioAudio *audio);
 int32_t StudioAudioBeginRecording(StudioAudio *audio);
+int32_t StudioAudioBeginRecordingAt(StudioAudio *audio, uint64_t hostTime);
 uint32_t StudioAudioSampleRate(const StudioAudio *audio);
 StudioCapture *StudioAudioCapture(StudioAudio *audio);
 StudioCapture *StudioCaptureCreate(uint32_t channels);
 void StudioCaptureDestroy(StudioCapture *capture);
 int32_t StudioCaptureStart(StudioCapture *capture);
+int32_t StudioCaptureStartAt(StudioCapture *capture, uint64_t hostTime, double rate);
 void StudioCaptureEnd(StudioCapture *capture);
 int32_t StudioCaptureIsWriting(const StudioCapture *capture);
 int32_t StudioCaptureOverflowed(const StudioCapture *capture);
 uint64_t StudioCaptureFrames(const StudioCapture *capture);
+uint64_t StudioCaptureFirstHostTime(const StudioCapture *capture);
+uint64_t StudioCaptureEndHostTime(const StudioCapture *capture);
 uint32_t StudioCaptureRead(StudioCapture *capture, float *samples, uint32_t frames);
 void StudioCaptureWriteStereo(StudioCapture *capture, const AudioBufferList *input);
+void StudioCaptureWriteStereoAt(StudioCapture *capture, const AudioBufferList *input, const AudioTimeStamp *timestamp);
 
 #endif

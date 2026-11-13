@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 
 private let writeFrames: AVAudioFrameCount = 4096
 
@@ -30,6 +31,32 @@ final class StudioWaveFile {
     }
 
     func close() { file = nil }
+
+    func pad(frames: UInt32, stride: Int) throws {
+        var remaining = frames
+        let zeros = [Float](repeating: 0, count: Int(writeFrames) * stride)
+        while remaining > 0 {
+            let count = min(remaining, writeFrames)
+            try append(zeros, frames: count, stride: stride)
+            remaining -= count
+        }
+    }
+}
+
+private struct SignalLevel {
+    var peak: Float = 0
+    var energy: Double = 0
+    var count = 0
+
+    mutating func add(_ sample: Float) {
+        let value = sample.isFinite ? sample : 0
+        peak = max(peak, abs(value))
+        energy += Double(value) * Double(value)
+        count += 1
+    }
+
+    var peakDB: Double { 20 * log10(Double(max(peak, 0.000001))) }
+    var rmsDB: Double { 10 * log10(max(energy / Double(max(count, 1)), 1e-12)) }
 }
 
 private final class RecordingStream {
@@ -38,13 +65,23 @@ private final class RecordingStream {
     private var samples: [Float]
     private let stride: Int
     private let files: [StudioWaveFile]
+    private let startHost: UInt64
+    private(set) var levels: [SignalLevel]
+    private(set) var timing: [String: Any]?
     private(set) var hasSignal = false
+    private var leadingFrames: UInt32 = 0
+    private var firstBlock = true
+    private var framesWritten: UInt64 = 0
 
-    init(capture: OpaquePointer, rate: UInt32, stride: Int, files: [StudioWaveFile]) {
+    var seconds: Double { Double(framesWritten) / Double(rate) }
+
+    init(capture: OpaquePointer, rate: UInt32, stride: Int, files: [StudioWaveFile], startHost: UInt64, measure: Bool = false) {
         self.capture = capture
         self.rate = rate
         self.stride = stride
         self.files = files
+        self.startHost = startHost
+        levels = measure ? Array(repeating: SignalLevel(), count: stride) : []
         samples = [Float](repeating: 0, count: Int(writeFrames) * stride)
     }
 
@@ -53,12 +90,43 @@ private final class RecordingStream {
         for _ in 0..<16 {
             let frames = samples.withUnsafeMutableBufferPointer { StudioCaptureRead(capture, $0.baseAddress, writeFrames) }
             if frames == 0 { return }
+            if firstBlock {
+                firstBlock = false
+                let first = StudioCaptureFirstHostTime(capture)
+                if let seconds = Self.seconds(from: startHost, to: first), seconds <= 30 {
+                    leadingFrames = UInt32((seconds * Double(rate)).rounded())
+                    for file in files { try file.pad(frames: leadingFrames, stride: stride) }
+                    framesWritten += UInt64(leadingFrames)
+                }
+            }
             if !hasSignal { hasSignal = samples.prefix(Int(frames) * stride).contains { abs($0) > 0.0001 } }
             for file in files { try file.append(samples, frames: frames, stride: stride) }
+            framesWritten += UInt64(frames)
+            if !levels.isEmpty {
+                for frame in 0..<Int(frames) {
+                    for channel in levels.indices { levels[channel].add(samples[frame * stride + channel]) }
+                }
+            }
         }
     }
 
-    func close() { files.forEach { $0.close() } }
+    func close() {
+        files.forEach { $0.close() }
+        let first = StudioCaptureFirstHostTime(capture)
+        let end = StudioCaptureEndHostTime(capture)
+        var values: [String: Any] = ["sampleRate": rate, "frames": framesWritten, "leadingSilenceFrames": leadingFrames]
+        if let start = Self.seconds(from: startHost, to: first) { values["firstSampleSeconds"] = start }
+        if let finish = Self.seconds(from: startHost, to: end), !firstBlock {
+            values["lastSampleEndSeconds"] = finish
+            values["fileEndMinusClockMilliseconds"] = (seconds - finish) * 1000
+        }
+        timing = values
+    }
+
+    private static func seconds(from start: UInt64, to end: UInt64) -> Double? {
+        guard start != 0, end >= start else { return nil }
+        return Double(AudioConvertHostTimeToNanos(end - start)) / 1e9
+    }
 }
 
 private final class Take {
@@ -66,17 +134,22 @@ private final class Take {
     let guitar: RecordingStream?
     let mac: RecordingStream?
     let system: StudioMacCapture?
-    let started = ProcessInfo.processInfo.systemUptime
+    let started: Double
     var timer: DispatchSourceTimer?
+    var guitarActive: Bool
+    var guitarNotice: String?
 
-    init(folder: URL, guitar: RecordingStream?, mac: RecordingStream?, system: StudioMacCapture?) {
+    init(folder: URL, guitar: RecordingStream?, mac: RecordingStream?, system: StudioMacCapture?, lead: Double) {
         self.folder = folder
         self.guitar = guitar
         self.mac = mac
         self.system = system
+        started = ProcessInfo.processInfo.systemUptime + lead
+        guitarActive = guitar != nil
     }
 
     var streams: [RecordingStream] { [guitar, mac].compactMap { $0 } }
+    var activeStreams: [RecordingStream] { [guitarActive ? guitar : nil, mac].compactMap { $0 } }
 }
 
 final class StudioRecording {
@@ -85,7 +158,8 @@ final class StudioRecording {
     private var lastFolder: URL?
     private var lastSeconds = 0.0
     private var message = ""
-    private var folder: URL?
+    private var toneSummary = ""
+    private var folder = UserDefaults.standard.url(forKey: "studio.recordingFolder")
     private var choosing = false
 
     func chooseFolder(window: NSWindow, reply: @escaping (Any?, String?) -> Void) {
@@ -100,7 +174,10 @@ final class StudioRecording {
         choosing = true
         panel.beginSheetModal(for: window) { [self] response in
             choosing = false
-            if response == .OK { folder = panel.url }
+            if response == .OK {
+                folder = panel.url
+                UserDefaults.standard.set(folder, forKey: "studio.recordingFolder")
+            }
             reply(status(), nil)
         }
     }
@@ -110,10 +187,12 @@ final class StudioRecording {
         let supportsMac: Bool
         if #available(macOS 14.2, *) { supportsMac = true } else { supportsMac = false }
         return writer.sync {
-            let seconds = take.map { ProcessInfo.processInfo.systemUptime - $0.started } ?? lastSeconds
+            let seconds = take.map { max(0, ProcessInfo.processInfo.systemUptime - $0.started) } ?? lastSeconds
             return [
                 "active": take != nil, "seconds": seconds, "folder": directory,
-                "hasSaved": lastFolder != nil, "message": message, "supportsMac": supportsMac
+                "hasSaved": lastFolder != nil, "message": message, "supportsMac": supportsMac,
+                "guitarActive": take?.guitarActive == true, "macActive": take?.mac != nil,
+                "guitarNotice": take?.guitarNotice ?? "", "toneSummary": toneSummary
             ]
         }
     }
@@ -134,49 +213,79 @@ final class StudioRecording {
         let manager = FileManager.default
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)
         var system: StudioMacCapture?
+        var startedGuitar = false
         do {
-            var guitarStream: RecordingStream?
-            var macStream: RecordingStream?
-            if guitar, let guitarCapture {
-                var files = [try StudioWaveFile(url: directory.appendingPathComponent("Gitar.wav"), rate: guitarRate, channels: [2, 3])]
+            var guitarFiles: [StudioWaveFile] = []
+            if guitar {
+                guitarFiles = [try StudioWaveFile(url: directory.appendingPathComponent("Gitar.wav"), rate: guitarRate, channels: [2, 3])]
                 if diagnostics {
-                    files.append(try StudioWaveFile(url: directory.appendingPathComponent("Ham-Gitar.wav"), rate: guitarRate, channels: [0]))
-                    files.append(try StudioWaveFile(url: directory.appendingPathComponent("Blackstar-EQ.wav"), rate: guitarRate, channels: [1]))
+                    guitarFiles.append(try StudioWaveFile(url: directory.appendingPathComponent("Ham-Gitar.wav"), rate: guitarRate, channels: [0]))
+                    guitarFiles.append(try StudioWaveFile(url: directory.appendingPathComponent("Blackstar-EQ.wav"), rate: guitarRate, channels: [1]))
                     try settings.write(to: directory.appendingPathComponent("Ayarlar.json"), options: .atomic)
                 }
-                guitarStream = RecordingStream(capture: guitarCapture, rate: guitarRate, stride: Int(StudioRecordingChannels), files: files)
             }
+            var macFile: StudioWaveFile?
             if mac {
                 guard #available(macOS 14.2, *) else { throw Failure("Mac sesi kaydı için macOS 14.2 veya sonrası gerekir.") }
                 do { system = try StudioSystemAudio() }
                 catch { throw Failure("Mac sesi başlatılamadı. Sistem Ayarları’nda IDCORE Studio’nun sistem sesi kaydı iznini kontrol et.") }
                 if let system {
-                    let file = try StudioWaveFile(url: directory.appendingPathComponent("Mac-Sesi.wav"), rate: system.sampleRate, channels: [0, 1])
-                    macStream = RecordingStream(capture: system.samples, rate: system.sampleRate, stride: 2, files: [file])
+                    macFile = try StudioWaveFile(url: directory.appendingPathComponent("Mac-Sesi.wav"), rate: system.sampleRate, channels: [0, 1])
                 }
             }
-            if guitar && StudioAudioBeginRecording(audio) != 0 { throw Failure("Blackstar USB ses kaydı başlatılamadı.") }
-            let newTake = Take(folder: directory, guitar: guitarStream, mac: macStream, system: system)
+            // Schedule both inputs against the same host clock after the files and the tap are ready.
+            let lead = 0.1
+            let start = AudioGetCurrentHostTime() + AudioConvertNanosToHostTime(UInt64(lead * 1e9))
+            var guitarStream: RecordingStream?
+            if guitar, let guitarCapture {
+                guitarStream = RecordingStream(capture: guitarCapture, rate: guitarRate, stride: Int(StudioRecordingChannels),
+                                               files: guitarFiles, startHost: start, measure: diagnostics)
+                guard StudioAudioBeginRecordingAt(audio, start) == 0 else { throw Failure("Blackstar USB ses kaydı başlatılamadı.") }
+                startedGuitar = true
+            }
+            var macStream: RecordingStream?
+            if let system, let macFile {
+                macStream = RecordingStream(capture: system.samples, rate: system.sampleRate, stride: 2, files: [macFile], startHost: start)
+                guard StudioCaptureStartAt(system.samples, start, Double(system.sampleRate)) == 0 else { throw Failure("Mac sesi kaydı başlatılamadı.") }
+            }
+            let newTake = Take(folder: directory, guitar: guitarStream, mac: macStream, system: system, lead: lead)
             let timer = DispatchSource.makeTimerSource(queue: writer)
             timer.schedule(deadline: .now(), repeating: .milliseconds(25), leeway: .milliseconds(5))
             timer.setEventHandler { [weak self] in self?.drain() }
             writer.sync {
                 take = newTake
                 message = ""
+                toneSummary = ""
                 newTake.timer = timer
                 timer.resume()
             }
         } catch {
+            if startedGuitar { StudioCaptureEnd(guitarCapture) }
             system?.stop()
             try? manager.removeItem(at: directory)
             throw error
         }
     }
 
-    func end(guitarOnly: Bool = false) {
+    func end() {
         writer.sync {
-            guard let take, !guitarOnly || take.guitar != nil else { return }
+            guard let take else { return }
             finish(take)
+        }
+    }
+
+    func stopGuitar(reason: String) {
+        writer.sync {
+            guard let take, take.guitarActive, let guitar = take.guitar else { return }
+            if take.mac == nil {
+                finish(take, reason: "\(reason). Gitar kaydı klasörde.")
+                return
+            }
+            let issue = close(guitar)
+            take.guitarActive = false
+            let time = Self.timeLabel(guitar.seconds)
+            take.guitarNotice = "\(reason) · \(time). Mac sesi kaydedilmeye devam ediyor."
+            if let issue { take.guitarNotice = "\(take.guitarNotice ?? "") \(issue)" }
         }
     }
 
@@ -187,8 +296,8 @@ final class StudioRecording {
     private func drain() {
         guard let take else { return }
         do {
-            for stream in take.streams { try stream.drain() }
-            if take.streams.contains(where: { StudioCaptureOverflowed($0.capture) != 0 }) {
+            for stream in take.activeStreams { try stream.drain() }
+            if take.activeStreams.contains(where: { StudioCaptureOverflowed($0.capture) != 0 }) {
                 finish(take, reason: "Disk yazımı yetişemedi. Kaydedilen bölüm klasörde.")
             }
         } catch {
@@ -199,25 +308,67 @@ final class StudioRecording {
     private func finish(_ active: Take, reason: String? = nil) {
         active.timer?.cancel()
         active.timer = nil
-        if let guitar = active.guitar { StudioCaptureEnd(guitar.capture) }
+        if active.guitarActive, let guitar = active.guitar { StudioCaptureEnd(guitar.capture) }
         active.system?.stop()
         var issue = reason
-        for _ in 0..<50 {
-            if !active.streams.contains(where: { StudioCaptureIsWriting($0.capture) != 0 }) { break }
-            usleep(1_000)
+        for stream in active.activeStreams {
+            if let error = close(stream) { issue = error }
         }
-        for stream in active.streams {
-            do { try stream.drain() }
-            catch { issue = "Disk yazımı tamamlanamadı. Kaydedilen bölüm klasörde." }
-            stream.close()
-        }
-        let containsFrames = active.streams.contains { StudioCaptureFrames($0.capture) > 0 }
+        let containsFrames = active.streams.contains { $0.seconds > 0 }
         var notice = issue ?? (containsFrames ? "Kayıt kaydedildi · \(active.folder.lastPathComponent)" : "Ses örneği alınamadı.")
-        if issue == nil, let mac = active.mac, !mac.hasSignal { notice += " Mac parçasında ses algılanmadı." }
+        if let guitar = active.guitar, !active.guitarActive { notice += " Gitar \(Self.timeLabel(guitar.seconds)) konumunda kesildi." }
+        if let mac = active.mac, !mac.hasSignal { notice += " Mac parçasında ses algılanmadı." }
+        if let guitar = active.guitar, let mac = active.mac, let guitarTiming = guitar.timing, let macTiming = mac.timing {
+            var timing: [String: Any] = ["guitar": guitarTiming, "mac": macTiming]
+            if !active.guitarActive { timing["guitarStoppedAtSeconds"] = guitar.seconds }
+            do {
+                let data = try JSONSerialization.data(withJSONObject: timing, options: [.prettyPrinted, .sortedKeys])
+                try data.write(to: active.folder.appendingPathComponent("Zamanlama.json"), options: .atomic)
+            } catch { notice += " Zamanlama bilgisi yazılamadı." }
+        }
+        if let guitar = active.guitar, guitar.levels.count == 4 {
+            toneSummary = Self.describe(guitar.levels)
+            do { try toneSummary.write(to: active.folder.appendingPathComponent("Ton-Olcumu.txt"), atomically: true, encoding: .utf8) }
+            catch { notice += " Ton ölçümü dosyaya yazılamadı." }
+        }
         message = notice
         lastFolder = active.folder
-        lastSeconds = active.streams.map { Double(StudioCaptureFrames($0.capture)) / Double($0.rate) }.max() ?? 0
+        lastSeconds = active.streams.map(\.seconds).max() ?? 0
         take = nil
+    }
+
+    private func close(_ stream: RecordingStream) -> String? {
+        StudioCaptureEnd(stream.capture)
+        for _ in 0..<50 {
+            if StudioCaptureIsWriting(stream.capture) == 0 { break }
+            usleep(1_000)
+        }
+        defer { stream.close() }
+        do {
+            try stream.drain()
+            return nil
+        } catch {
+            return "Disk yazımı tamamlanamadı. Kaydedilen bölümü ve disk alanını kontrol et."
+        }
+    }
+
+    private static func timeLabel(_ seconds: Double) -> String {
+        let total = Int(seconds)
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    private static func describe(_ levels: [SignalLevel]) -> String {
+        let dry = levels[0], amp = levels[1], left = levels[2], right = levels[3]
+        let pedalPeak = max(left.peakDB, right.peakDB)
+        let pedalRMS = 10 * log10(max((left.energy + right.energy) / Double(max(left.count + right.count, 1)), 1e-12))
+        let readings = String(format: "Ham gitar %.1f · Blackstar EQ %.1f · Pedal çıkışı %.1f dBFS (tepe).", dry.peakDB, amp.peakDB, pedalPeak)
+        let tip: String
+        if dry.peakDB < -42 { tip = "Ham gitar seviyesi düşük. Bir riff çaldıysan gitarın ses düğmesini ve kabloyu kontrol edip tekrar kaydet." }
+        else if amp.peakDB >= -1 { tip = "Blackstar EQ sinyali tavana yakın. Amfi Gain’i veya USB kayıt seviyesini azaltıp karşılaştır." }
+        else if pedalRMS - amp.rmsDB < -6 && pedalPeak < -8 {
+            tip = "Pedal çıkışı ön kattan belirgin düşük. Seviyesi ayarlanabilen son açık pedalın Level ayarını az artırıp aynı riffi tekrar kaydet."
+        } else { tip = "Dijital seviyelerden belirgin bir ayar sorunu çıkmadı. Hoparlördeki tonu değerlendirmek için aynı riffin oda kaydı gerekir." }
+        return "\(readings)\n\(tip)"
     }
 
     private static func takeName() -> String {

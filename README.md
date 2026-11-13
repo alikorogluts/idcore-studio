@@ -19,8 +19,12 @@ open "build/IDCORE Studio.app"
 ## Kayıt ve USB sesini deneme
 
 1. **Kayıt** sekmesinde hedef klasörü seç. **Sanal gitar** kaydı için **Sanal sesi aç**. Mac’te çalan eşliği almak için **Mac sesi**’ni işaretle. Bu seçenek macOS 14.2 ve sonrası ile sistem sesi kaydı izni gerektirir.
-2. **Kaydı başlat** ve çalmayı bitirince **Kaydı durdur**. Dosyalar seçtiğin klasörde yeni bir kayıt klasörüne yazılır. Her seçili kaynak ayrı bir WAV üretir. **Ham gitar ve EQ’yu da kaydet** seçilirse ton karşılaştırma dosyaları ve ayarlar eklenir.
-3. Sanal pedal etkisini tek başına duymak için **Doğrudan sesi kıs**. **USB çıkışını dene**, Blackstar’a kısa bir test tonu gönderir. Ton duyulmuyorsa Blackstar’da TAP’ı tutup Volume ile dinleme seviyesini kontrol et. **Pedal Volume** gitar kaydının seviyesinden bağımsızdır.
+2. **Kaydı başlat** ve çalmayı bitirince **Kaydı durdur**. Her kaynak ayrı bir WAV üretir. İki kaynağın başlangıcı Mac’in ses saatine göre hizalanır. Blackstar kesilirse gitar dosyası kapanır ve Mac kaydı devam eder. `Zamanlama.json` iki parçanın ölçülen başlangıç ve bitiş bilgilerini içerir.
+3. Sanal pedal etkisini tek başına duymak için **Doğrudan sesi kıs**. Studio normal çıkışta veya **Bağlantıyı kes** düğmesinde önceki doğrudan seviyeyi geri yükler. Beklenmedik USB kopmasında, aynı amfi bağlı ve seviye hâlâ sıfırsa **Doğrudan sesi geri aç** düğmesi önceki seviyeyi getirir. **USB çıkışını dene**, Blackstar’a kısa bir test tonu gönderir. Ton duyulmuyorsa Blackstar’da TAP’ı tutup Volume ile dinleme seviyesini kontrol et.
+
+**Ton ölçümü** açıkken aynı riffi çal. Studio ham gitarı, Blackstar ön kat ve EQ sinyalini ve pedal çıkışını ayrı dosyalara yazar. Kayıt sonunda tepe seviyeleri ve seviye önerisi ekranda ve `Ton-Olcumu.txt` dosyasında görünür. Hoparlör ve oda etkisi için telefonla aynı riffi ayrıca kaydedebilirsin.
+
+Studio, başka bir uygulama Blackstar’ı kullanmıyorsa canlı ses için 128 örneklik blok ister. Sanal pedal ekranı kullanılan blok boyutunu ve Core Audio’nun USB giriş–çıkış süresi tahminini gösterir. Kayıt yazımı ve ton ölçümü ayrı çalışır. [Apple Core Audio zaman damgaları](https://developer.apple.com/documentation/coreaudio/audiodeviceioproc?language=objc)
 
 Blackstar kılavuzunda USB kanal 3, dahili efektlerden ve hoparlör kabini emülasyonundan önceki ön kat olarak tanımlanır. Sanal pedallar bu sinyali işler ve USB 1/2 üzerinden Blackstar hoparlörlerine gönderir. [Blackstar ID:CORE V4 kılavuzu](https://www.blackstaramps.com/wp-content/uploads/2024/01/155300M-VA-1-IDCORE-V4-OWNERS-MANUAL.pdf)
 

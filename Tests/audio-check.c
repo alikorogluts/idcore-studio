@@ -150,14 +150,38 @@ static void checkMacHardware(void) {
         assert(StudioAudioBeginRecording(audio) == noErr);
         assert(StudioAudioBeginRecording(audio) != noErr);
         usleep(400000);
+        const uint32_t bufferFrames = StudioAudioBufferFrames(audio);
+        const uint32_t latencyMicros = StudioAudioLatencyMicros(audio);
         StudioAudioStop(audio);
         const uint64_t frames = StudioCaptureFrames(recording);
         float samples[256 * StudioRecordingChannels];
         assert(frames > 0 && StudioCaptureRead(recording, samples, 256) > 0);
         assert(!StudioCaptureIsWriting(recording) && StudioAudioOutputLevel(audio) == 0);
-        printf("Blackstar USB at zero monitor volume: %llu frames at %u Hz\n", (unsigned long long)frames, rate);
+        printf("Blackstar USB: %llu frames at %u Hz, %u frames per block, %.2f ms Core Audio input to output\n",
+               (unsigned long long)frames, rate, bufferFrames, latencyMicros / 1000.0);
     }
     StudioAudioDestroy(audio);
+}
+
+static void checkCaptureStartTime(void) {
+    StudioCapture *capture = StudioCaptureCreate(2);
+    assert(capture);
+    const uint64_t beginning = AudioGetCurrentHostTime();
+    const uint64_t twoFrames = AudioConvertNanosToHostTime(2000000);
+    float samples[] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+    AudioBufferList input = {1, {{2, sizeof(samples), samples}}};
+    AudioTimeStamp stamp = {.mHostTime = beginning, .mFlags = kAudioTimeStampHostTimeValid};
+    assert(StudioCaptureStartAt(capture, beginning + twoFrames, 1000) == 0);
+    StudioCaptureWriteStereoAt(capture, &input, &stamp);
+    StudioCaptureEnd(capture);
+    assert(StudioCaptureFirstHostTime(capture) == beginning + twoFrames);
+    assert(StudioCaptureEndHostTime(capture) == beginning + AudioConvertNanosToHostTime(4000000));
+    assert(StudioCaptureFrames(capture) == 2);
+    float recorded[4];
+    assert(StudioCaptureRead(capture, recorded, 2) == 2);
+    assert(memcmp(recorded, samples + 4, sizeof(recorded)) == 0);
+    StudioCaptureDestroy(capture);
+    puts("Timed capture trims pre-roll and preserves first/end host timestamps");
 }
 
 static void checkStreamingCapture(void) {
@@ -185,6 +209,7 @@ static void checkStreamingCapture(void) {
 }
 
 int main(void) {
+    checkCaptureStartTime();
     StudioAudio *audio = StudioAudioCreate();
     assert(audio);
     audio->rate = 48000;

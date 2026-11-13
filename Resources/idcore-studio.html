@@ -40,17 +40,21 @@
       <p class="hint" id="amp-hint">Düğme hakkında bilgi için üzerine gel veya klavyeyle odaklan.</p>
     </section>
     <section class="panel" id="recording-view" aria-labelledby="recording-heading" hidden>
-      <div class="section-head"><h2 id="recording-heading">Kayıt</h2><output id="record-time" aria-label="Geçen süre">0:00</output></div>
+      <div class="section-head"><h2 id="recording-heading">Kayıt</h2><span class="record-clock"><span id="record-live" hidden>Kayıtta</span><output id="record-time" aria-label="Geçen süre">0:00</output></span></div>
       <div class="record-destination"><button type="button" id="record-folder">Klasör seç…</button><span id="record-folder-label">Henüz klasör seçilmedi.</span></div>
       <fieldset class="record-sources">
         <legend>Ses kaynakları</legend>
-        <label><input type="checkbox" id="record-guitar" checked> Sanal gitar</label>
-        <label><input type="checkbox" id="record-mac"> Mac sesi</label>
-        <label><input type="checkbox" id="record-diagnostics"> Ham gitar ve EQ’yu da kaydet</label>
+        <label><input type="checkbox" id="record-guitar" checked><span><strong>Sanal gitar</strong><small id="record-guitar-state">Pedallardan geçen gitar · Gitar.wav</small></span></label>
+        <label><input type="checkbox" id="record-mac"><span><strong>Mac sesi</strong><small id="record-mac-state">Bilgisayarda çalan eşlik · Mac-Sesi.wav</small></span></label>
+        <label><input type="checkbox" id="record-diagnostics"><span><strong>Ton ölçümü</strong><small>Ham gitar, Blackstar EQ ve pedal çıkışını karşılaştırır</small></span></label>
       </fieldset>
-      <p class="hint">Sanal gitar ve Mac sesi ayrı WAV dosyalarına yazılır. Pedal Volume sadece amfiden duyduğun sesi ayarlar.</p>
-      <div class="record-tools"><button type="button" id="record-audio" hidden>Sanal sesi aç</button><button type="button" id="record-start" disabled>Kaydı başlat</button><button type="button" id="record-reveal" disabled>Kayıt klasörünü aç</button></div>
+      <p class="hint">Süreyi sen belirlersin. İki kaynak da seçilirse WAV dosyaları aynı başlangıca hizalanır. Blackstar kesilirse Mac kaydı sürer.</p>
+      <div class="record-tools"><button type="button" id="record-audio" hidden>Sanal sesi aç</button><button type="button" class="primary" id="record-start" disabled>Kaydı başlat</button><button type="button" id="record-reveal" disabled>Kayıt klasörünü aç</button></div>
       <p class="hint" id="record-status" role="status"></p>
+      <section class="record-report" id="record-report" hidden aria-labelledby="record-report-heading">
+        <h3 id="record-report-heading">Ton ölçümü</h3>
+        <p id="record-report-text"></p>
+      </section>
     </section>
     <section class="panel" id="pedals-view" aria-labelledby="pedals-heading">
       <div class="section-head"><h2 id="pedals-heading" tabindex="-1">Sanal pedal zinciri</h2><small>Esinlenilmiş modeller</small></div>
@@ -65,9 +69,11 @@
       <div class="listen-tools">
         <label class="voice-auto"><input id="balance-levels" type="checkbox" checked> Clean ve drive sesini dengele</label>
         <span class="hint" id="balance-status"></span>
-        <button type="button" id="direct-volume">Doğrudan sesi kıs</button>
+        <button type="button" id="direct-volume" aria-describedby="direct-help">Doğrudan sesi kıs</button>
         <button type="button" id="usb-test">USB çıkışını dene</button>
       </div>
+      <p class="hint" id="direct-help"></p>
+      <p class="hint" id="audio-latency" hidden></p>
       <details class="studio-help tuner">
         <summary>Volume ve Gain</summary>
         <dl class="level-help" id="volume-help">

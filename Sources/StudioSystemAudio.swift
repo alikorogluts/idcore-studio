@@ -71,10 +71,9 @@ final class StudioSystemAudio: StudioMacCapture {
             ]]
         ]
         try check(AudioHardwareCreateAggregateDevice(settings as CFDictionary, &aggregate))
-        try check(AudioDeviceCreateIOProcIDWithBlock(&process, aggregate, nil) { [samples] _, input, _, _, _ in
-            StudioCaptureWriteStereo(samples, input)
+        try check(AudioDeviceCreateIOProcIDWithBlock(&process, aggregate, nil) { [samples] _, input, timestamp, _, _ in
+            StudioCaptureWriteStereoAt(samples, input, timestamp)
         })
-        try check(StudioCaptureStart(samples))
         try check(AudioDeviceStart(aggregate, process))
         started = true
     }

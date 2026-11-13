@@ -28,6 +28,8 @@
   let audioRunning = false;
   let audioPending = false;
   let audioMessage = '';
+  let directPending = false;
+  let directMessage = '';
   let recording = {active: false, folder: '', seconds: 0, hasSaved: false, supportsMac: false};
   let recordingBusy = false;
   let recordingMessage = '';
@@ -47,6 +49,11 @@
   }
 
   function setNotice(message) { byId('notice').textContent = message; }
+
+  function setText(id, text) {
+    const node = byId(id);
+    if (node.textContent !== text) node.textContent = text;
+  }
 
   function showView(id) {
     for (const button of viewButtons) {
@@ -97,9 +104,20 @@
     const direct = byId('direct-volume');
     const saved = session?.directBefore;
     const restore = volume === 0 && saved > 0;
-    direct.disabled = !session?.ready || session.pendingWrites.has(3) || (volume === 0 && !restore) || volume === undefined;
+    direct.disabled = !session?.ready || directPending || session.pendingWrites.has(3) || (volume === 0 && !restore) || volume === undefined;
     direct.textContent = restore ? 'Doğrudan sesi geri aç' : volume === 0 ? 'Doğrudan ses kısık' : 'Doğrudan sesi kıs';
+    const directHelp = byId('direct-help');
+    const help = directMessage || (restore
+      ? (session.reconnectedMuted ? 'Önceki seviye saklandı. Geri aç düğmesiyle amfi sesini geri alabilirsin.' : 'Şu an amfiden USB pedal dönüşünü dinliyorsun. Geri aç ile önceki amfi sesine dön.')
+      : volume === 0 ? 'Amfi sesini açmak için Amfi ve EQ bölümündeki Amfi Volume’u kullan.'
+      : 'Sanal pedalları tek başına dinlemek için amfinin doğrudan sesini kıs.');
+    if (directHelp.textContent !== help) directHelp.textContent = help;
     byId('usb-test').disabled = !audioRunning || audioPending;
+    const latency = byId('audio-latency');
+    latency.hidden = !audioRunning || !audioMeters.bufferFrames;
+    const measured = audioMeters.latencyMicros ? ` · USB giriş–çıkış tahmini ${(audioMeters.latencyMicros / 1000).toFixed(1)} ms` : '';
+    const latencyText = audioMeters.bufferFrames ? `Ses bloğu ${audioMeters.bufferFrames} örnek${measured}` : '';
+    if (latency.textContent !== latencyText) latency.textContent = latencyText;
     const readout = byId('wah-live');
     if (readout) {
       const frequency = audioRunning && virtualPedals.some(({type, enabled}) => type === 8 && enabled) ? audioMeters.wahHz : 0;
@@ -464,26 +482,33 @@
     const locked = recordingBusy || recording.active;
     const sourceReady = (guitar.checked || mac.checked) && (!guitar.checked || audioRunning);
     byId('record-folder').disabled = !window.studioAudio || locked;
-    const folder = byId('record-folder-label');
-    folder.textContent = recording.folder || 'Henüz klasör seçilmedi.';
+    setText('record-folder-label', recording.folder || 'Henüz klasör seçilmedi.');
     guitar.disabled = locked;
     mac.disabled = locked || !recording.supportsMac;
     byId('record-diagnostics').disabled = locked || !guitar.checked;
     const start = byId('record-start');
     start.disabled = !window.studioAudio || recordingBusy || (!recording.active && (!recording.folder || !sourceReady || (guitar.checked && audioPending)));
-    start.textContent = recording.active ? 'Kaydı durdur' : 'Kaydı başlat';
+    setText('record-start', recording.active ? 'Kaydı durdur' : 'Kaydı başlat');
+    start.dataset.recording = String(recording.active);
+    byId('record-live').hidden = !recording.active;
+    setText('record-guitar-state', recording.guitarActive ? 'Kaydediliyor · Gitar.wav' :
+      recording.guitarNotice ? 'Gitar kesildi · dosya korundu' : 'Pedallardan geçen gitar · Gitar.wav');
+    setText('record-mac-state', recording.macActive ? 'Kaydediliyor · Mac-Sesi.wav' :
+      recording.supportsMac ? 'Bilgisayarda çalan eşlik · Mac-Sesi.wav' : 'macOS 14.2 veya sonrası gerekir');
     byId('record-reveal').disabled = locked || !recording.hasSaved;
     const audio = byId('record-audio');
     audio.hidden = !guitar.checked || audioRunning || recording.active;
     audio.disabled = !window.studioAudio || !session?.ready || audioPending;
     const seconds = Math.floor(recording.seconds);
-    byId('record-time').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    setText('record-time', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
     const status = byId('record-status');
-    const text = recordingMessage || (recording.active ? 'Kayıt alınıyor.' : recording.message ||
+    const text = recordingMessage || (recording.active ? recording.guitarNotice || 'Kayıt alınıyor.' : recording.message ||
       (!window.studioAudio ? 'Kayıt için ID:CORE Studio Mac uygulamasını aç.' :
        !recording.folder ? 'Kaydetmek istediğin klasörü seç.' :
        !sourceReady ? 'Bir ses kaynağı seç. Sanal gitar için sanal sesi aç.' : 'Kayda hazır.'));
     if (status.textContent !== text) status.textContent = text;
+    byId('record-report').hidden = !recording.toneSummary;
+    setText('record-report-text', recording.toneSummary || '');
   }
 
   function resetAudioUI() {
@@ -770,6 +795,9 @@
       checked++;
       const matched = received && ampValues.get(parameter) === expected.value;
       if (!matched) rejected.push(parameter);
+      if (parameter === 3 && expected.direct) {
+        directMessage = matched ? '' : 'Amfi yeni ses seviyesini doğrulamadı. Amfi ve EQ bölümünden ayarları yeniden oku.';
+      }
       if (parameter === 1) link.rejectedVoice = matched ? null : expected.value;
       logUSB(`Parametre ${parameter} → ${expected.value} · ${received ? (ampValues.get(parameter) ?? 'okunamadı') : 'zaman aşımı'}`);
     }
@@ -810,6 +838,10 @@
       case 'state': {
         ampValues.clear();
         for (const key of [1, ...paramViews.keys()]) storeParam(key, report.bytes[key + 3]);
+        if (ampValues.get(3) > 0 && link.pendingWrites.get(3)?.value !== 0 && !directPending) {
+          link.directBefore = null;
+          link.reconnectedMuted = false;
+        }
         const unconfirmed = link.pendingSlot !== null && link.pendingSlot !== link.slot;
         if (link.pendingSlot !== null) logUSB(`Yuva ${link.pendingSlot} · ${unconfirmed ? 'doğrulanamadı' : 'doğrulandı'}`);
         link.pendingSlot = null;
@@ -845,6 +877,10 @@
         break;
       case 'values':
         report.values.forEach(([parameter, value]) => storeParam(parameter, value));
+        if (!directPending && link.pendingWrites.get(3)?.value !== 0 && report.values.some(([parameter, value]) => parameter === 3 && value > 0)) {
+          link.directBefore = null;
+          link.reconnectedMuted = false;
+        }
         break;
     }
     render();
@@ -884,6 +920,7 @@
   async function endSession(message) {
     const link = session;
     session = null;
+    directMessage = '';
     songVoiceRequest = '';
     resetAudioUI();
     if (link) {
@@ -922,6 +959,8 @@
         if (device.opened) await device.close();
         return;
       }
+      link.directBefore = device.directBefore || null;
+      link.reconnectedMuted = Boolean(link.directBefore);
       device.addEventListener('inputreport', link.listener);
       setNotice('Amfi ayarları okunuyor…');
       requestState(link);
@@ -1018,13 +1057,40 @@
     renderListenTools();
     saveSettings(true);
   });
-  byId('direct-volume').addEventListener('click', () => {
+  byId('direct-volume').addEventListener('click', async () => {
+    const link = session;
     const volume = ampValues.get(3);
-    if (!session?.ready || session.pendingWrites.has(3) || volume === undefined) return;
-    if (volume > 0) {
-      session.directBefore = volume;
-      edit(3, 0);
-    } else if (session.directBefore > 0) edit(3, session.directBefore);
+    if (!link?.ready || directPending || link.pendingWrites.has(3) || volume === undefined) return;
+    const next = volume > 0 ? 0 : link.directBefore;
+    if (next === null || next === undefined) return;
+    if (!link.device.setDirectVolume) {
+      if (volume > 0) link.directBefore = volume;
+      edit(3, next);
+      return;
+    }
+    directPending = true;
+    directMessage = 'Amfi ses seviyesi değiştiriliyor…';
+    renderListenTools();
+    try {
+      const operation = link.queue.then(async () => {
+        if (session !== link || !link.ready) return false;
+        await link.device.setDirectVolume(volume, next);
+        return true;
+      });
+      link.queue = operation.catch(() => false);
+      if (await operation && session === link) {
+        if (volume > 0) link.directBefore = volume;
+        const expected = {value: next, sent: true, direct: true};
+        link.pendingWrites.set(3, expected);
+        verifyWrites(link);
+      }
+      directMessage = '';
+    } catch (error) {
+      directMessage = error.message || String(error);
+    } finally {
+      directPending = false;
+      render();
+    }
   });
   byId('usb-test').addEventListener('click', async () => {
     try {

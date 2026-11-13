@@ -35,6 +35,10 @@ struct StudioCapture {
     uint32_t channels;
     _Atomic uint64_t written;
     _Atomic uint64_t read;
+    _Atomic uint64_t firstHostTime;
+    _Atomic uint64_t endHostTime;
+    uint64_t startHostTime;
+    double rate;
     _Atomic bool active;
     _Atomic bool writing;
     _Atomic bool overflowed;
@@ -44,6 +48,8 @@ struct StudioCapture {
 struct StudioAudio {
     AudioDeviceID device;
     AudioDeviceIOProcID process;
+    UInt32 originalBufferFrames;
+    UInt32 configuredBufferFrames;
     _Atomic uint32_t rigRevision;
     _Atomic uint64_t order;
     _Atomic uint32_t controls[StudioPedalCount];
@@ -51,6 +57,8 @@ struct StudioAudio {
     _Atomic uint32_t level;
     _Atomic uint32_t inputLevel;
     _Atomic uint32_t outputLevel;
+    _Atomic uint32_t bufferFrames;
+    _Atomic uint32_t latencyMicros;
     _Atomic bool testUSB;
     _Atomic bool matchLevels;
     _Atomic uint32_t matchPermille;
@@ -171,6 +179,46 @@ static int32_t amplifierFormat(AudioDeviceID *device, double *rate) {
         !supportsChannels(*device, kAudioObjectPropertyScopeInput, captureChannels, *rate) ||
         !supportsChannels(*device, kAudioObjectPropertyScopeOutput, 2, *rate)) return formatUnsupported;
     return noErr;
+}
+
+static AudioObjectPropertyAddress bufferSizeAddress(void) {
+    return address(kAudioDevicePropertyBufferFrameSize, kAudioObjectPropertyScopeGlobal);
+}
+
+static bool deviceIsIdle(AudioDeviceID device) {
+    UInt32 running = 0;
+    return property(device, address(kAudioDevicePropertyDeviceIsRunning, kAudioObjectPropertyScopeGlobal),
+                    &running, sizeof(running)) && !running;
+}
+
+static void preferLowLatency(StudioAudio *audio) {
+    AudioObjectPropertyAddress size = bufferSizeAddress();
+    AudioValueRange range = {0};
+    Boolean settable = false;
+    UInt32 current = 0;
+    if (!deviceIsIdle(audio->device) ||
+        !property(audio->device, size, &current, sizeof(current)) ||
+        AudioObjectIsPropertySettable(audio->device, &size, &settable) != noErr || !settable ||
+        !property(audio->device, address(kAudioDevicePropertyBufferFrameSizeRange, kAudioObjectPropertyScopeGlobal),
+                  &range, sizeof(range))) return;
+    const UInt32 preferred = 128;
+    if (preferred >= current || preferred < range.mMinimum || preferred > range.mMaximum) return;
+    if (AudioObjectSetPropertyData(audio->device, &size, 0, NULL, sizeof(preferred), &preferred) == noErr) {
+        audio->originalBufferFrames = current;
+        audio->configuredBufferFrames = preferred;
+        property(audio->device, size, &audio->configuredBufferFrames, sizeof(audio->configuredBufferFrames));
+    }
+}
+
+static void restoreBufferSize(StudioAudio *audio) {
+    if (!audio->originalBufferFrames) return;
+    AudioObjectPropertyAddress size = bufferSizeAddress();
+    UInt32 current = 0;
+    if (deviceIsIdle(audio->device) && property(audio->device, size, &current, sizeof(current)) &&
+        current == audio->configuredBufferFrames) {
+        AudioObjectSetPropertyData(audio->device, &size, 0, NULL, sizeof(audio->originalBufferFrames), &audio->originalBufferFrames);
+    }
+    audio->originalBufferFrames = audio->configuredBufferFrames = 0;
 }
 
 static float bound(float value) { return fmaxf(-1.0f, fminf(1.0f, value)); }
@@ -454,22 +502,49 @@ static float matchGain(LevelMatch *match, bool enabled, float dry, float preamp,
     return lowPass(match->target, &match->gain, speed / rate);
 }
 
-static bool reserveCapture(StudioCapture *capture, uint32_t frames, uint64_t *position) {
-    if (!frames || !atomic_load(&capture->active)) return false;
+typedef struct { uint64_t position; uint32_t skip; } CaptureBlock;
+
+static uint64_t hostTime(const AudioTimeStamp *timestamp) {
+    return timestamp && (timestamp->mFlags & kAudioTimeStampHostTimeValid) ? timestamp->mHostTime : 0;
+}
+
+static bool reserveCapture(StudioCapture *capture, uint32_t frames, uint64_t host, CaptureBlock *block) {
+    if (!capture || !frames || !atomic_load(&capture->active)) return false;
     atomic_store(&capture->writing, true);
     if (!atomic_load(&capture->active)) {
         atomic_store(&capture->writing, false);
         return false;
     }
     uint64_t written = atomic_load_explicit(&capture->written, memory_order_relaxed);
+    double rate = capture->rate;
+    uint32_t skip = 0;
+    uint64_t clock = host ? host : AudioGetCurrentHostTime();
+    if (capture->startHostTime > clock && rate > 0) {
+        double preceding = (double)AudioConvertHostTimeToNanos(capture->startHostTime - clock) * rate / 1e9;
+        if (!host || preceding >= frames) {
+            atomic_store(&capture->writing, false);
+            return false;
+        }
+        skip = (uint32_t)ceil(preceding);
+    }
+    if (skip >= frames) {
+        atomic_store(&capture->writing, false);
+        return false;
+    }
     uint64_t read = atomic_load_explicit(&capture->read, memory_order_acquire);
-    if (frames > captureCapacity || written - read + frames > captureCapacity) {
+    if (frames - skip > captureCapacity || written - read + frames - skip > captureCapacity) {
         atomic_store(&capture->overflowed, true);
         atomic_store(&capture->active, false);
         atomic_store(&capture->writing, false);
         return false;
     }
-    *position = written;
+    if (host && rate > 0) {
+        if (!written) atomic_store_explicit(&capture->firstHostTime, host + AudioConvertNanosToHostTime((uint64_t)llround(skip * 1e9 / rate)), memory_order_relaxed);
+        atomic_store_explicit(&capture->endHostTime, host + AudioConvertNanosToHostTime((uint64_t)llround(frames * 1e9 / rate)), memory_order_relaxed);
+    } else {
+        atomic_store_explicit(&capture->endHostTime, 0, memory_order_relaxed);
+    }
+    *block = (CaptureBlock){written, skip};
     return true;
 }
 
@@ -513,14 +588,22 @@ static OSStatus renderAudio(AudioDeviceID device, const AudioTimeStamp *now, con
     float inputPeak = 0;
     float outputPeak = 0;
     StudioCapture *recording = audio->recording;
-    uint64_t recorded = 0;
-    bool recordingActive = reserveCapture(recording, frames, &recorded);
+    uint64_t inputHost = hostTime(inputTime);
+    uint64_t outputHost = hostTime(outputTime);
+    if (frames) {
+        atomic_store_explicit(&audio->bufferFrames, frames, memory_order_relaxed);
+        uint64_t latency = outputHost > inputHost && inputHost ? AudioConvertHostTimeToNanos(outputHost - inputHost) / 1000 : 0;
+        atomic_store_explicit(&audio->latencyMicros, latency <= UINT32_MAX ? (uint32_t)latency : 0, memory_order_relaxed);
+    }
+    CaptureBlock block = {0};
+    bool recordingActive = reserveCapture(recording, frames, inputHost, &block);
+    float monitorStep = (float)(40.0 / audio->rate);
     for (UInt32 frame = 0; frame < frames; ++frame) {
         float sample = sampleAt(preamp, frame);
         float unprocessed = sampleAt(dry, frame);
         inputPeak = fmaxf(inputPeak, fabsf(sample));
         capturePitch(audio, unprocessed);
-        audio->gain += (target - audio->gain) * (float)(40.0 / audio->rate);
+        audio->gain += (target - audio->gain) * monitorStep;
         Signal result = processSample(audio, sample, unprocessed, &rig);
         float correction = matchGain(&audio->levelMatch, balance, unprocessed, sample, (float)audio->rate);
         result.left = keepHeadroom(result.left * correction);
@@ -535,15 +618,15 @@ static OSStatus renderAudio(AudioDeviceID device, const AudioTimeStamp *now, con
         left.samples[frame * left.stride] = monitor.left;
         right.samples[frame * right.stride] = monitor.right;
         outputPeak = fmaxf(outputPeak, fmaxf(fabsf(monitor.left), fabsf(monitor.right)));
-        if (recordingActive) {
-            float *track = captureFrame(recording, recorded++);
+        if (recordingActive && frame >= block.skip) {
+            float *track = captureFrame(recording, block.position++);
             track[0] = unprocessed;
             track[1] = sample;
             track[2] = result.left * 0.75f;
             track[3] = result.right * 0.75f;
         }
     }
-    if (recordingActive) commitCapture(recording, recorded);
+    if (recordingActive) commitCapture(recording, block.position);
     updateMeter(&audio->inputLevel, inputPeak);
     updateMeter(&audio->outputLevel, outputPeak);
     atomic_store_explicit(&audio->matchPermille, (uint32_t)lroundf(audio->levelMatch.gain * 1000.0f), memory_order_relaxed);
@@ -564,6 +647,8 @@ StudioAudio *StudioAudioCreate(void) {
         atomic_init(&audio->level, 20);
         atomic_init(&audio->inputLevel, 0);
         atomic_init(&audio->outputLevel, 0);
+        atomic_init(&audio->bufferFrames, 0);
+        atomic_init(&audio->latencyMicros, 0);
         atomic_init(&audio->testUSB, false);
         atomic_init(&audio->matchLevels, true);
         atomic_init(&audio->matchPermille, 1000);
@@ -589,6 +674,14 @@ int32_t StudioAudioProbe(void) {
     return amplifierFormat(&device, &rate);
 }
 
+static int32_t startDevice(StudioAudio *audio) {
+    if (AudioDeviceCreateIOProcID(audio->device, renderAudio, audio, &audio->process) != noErr) return audioUnavailable;
+    if (AudioDeviceStart(audio->device, audio->process) == noErr) return noErr;
+    AudioDeviceDestroyIOProcID(audio->device, audio->process);
+    audio->process = NULL;
+    return audioUnavailable;
+}
+
 int32_t StudioAudioStart(StudioAudio *audio) {
     if (!audio) return audioUnavailable;
     if (audio->process) return noErr;
@@ -610,9 +703,11 @@ int32_t StudioAudioStart(StudioAudio *audio) {
     memset(audio->chorus, 0, sizeof(audio->chorus));
     memset(audio->delay, 0, sizeof(audio->delay));
     memset(audio->echo, 0, sizeof(audio->echo));
-    if (AudioDeviceCreateIOProcID(audio->device, renderAudio, audio, &audio->process) != noErr ||
-        AudioDeviceStart(audio->device, audio->process) != noErr) {
-        status = audioUnavailable;
+    preferLowLatency(audio);
+    status = startDevice(audio);
+    if (status != noErr && audio->originalBufferFrames) {
+        restoreBufferSize(audio);
+        status = startDevice(audio);
     }
     if (status != noErr) StudioAudioStop(audio);
     return status;
@@ -625,9 +720,12 @@ void StudioAudioStop(StudioAudio *audio) {
         AudioDeviceDestroyIOProcID(audio->device, audio->process);
         audio->process = NULL;
     }
+    restoreBufferSize(audio);
     StudioCaptureEnd(audio->recording);
     atomic_store_explicit(&audio->inputLevel, 0, memory_order_relaxed);
     atomic_store_explicit(&audio->outputLevel, 0, memory_order_relaxed);
+    atomic_store_explicit(&audio->bufferFrames, 0, memory_order_relaxed);
+    atomic_store_explicit(&audio->latencyMicros, 0, memory_order_relaxed);
     atomic_store_explicit(&audio->matchPermille, 1000, memory_order_relaxed);
     atomic_store_explicit(&audio->wahHz, 0, memory_order_relaxed);
     atomic_store_explicit(&audio->pitchWritten, 0, memory_order_relaxed);
@@ -678,8 +776,20 @@ uint32_t StudioAudioOutputLevel(const StudioAudio *audio) {
     return audio ? atomic_load_explicit(&audio->outputLevel, memory_order_relaxed) : 0;
 }
 
+uint32_t StudioAudioBufferFrames(const StudioAudio *audio) {
+    return audio ? atomic_load_explicit(&audio->bufferFrames, memory_order_relaxed) : 0;
+}
+
+uint32_t StudioAudioLatencyMicros(const StudioAudio *audio) {
+    return audio ? atomic_load_explicit(&audio->latencyMicros, memory_order_relaxed) : 0;
+}
+
 int32_t StudioAudioBeginRecording(StudioAudio *audio) {
-    return audio && audio->process ? StudioCaptureStart(audio->recording) : audioUnavailable;
+    return StudioAudioBeginRecordingAt(audio, 0);
+}
+
+int32_t StudioAudioBeginRecordingAt(StudioAudio *audio, uint64_t hostTime) {
+    return audio && audio->process ? StudioCaptureStartAt(audio->recording, hostTime, audio->rate) : audioUnavailable;
 }
 
 uint32_t StudioAudioSampleRate(const StudioAudio *audio) {
@@ -695,6 +805,8 @@ StudioCapture *StudioCaptureCreate(uint32_t channels) {
     capture->channels = channels;
     atomic_init(&capture->written, 0);
     atomic_init(&capture->read, 0);
+    atomic_init(&capture->firstHostTime, 0);
+    atomic_init(&capture->endHostTime, 0);
     atomic_init(&capture->active, false);
     atomic_init(&capture->writing, false);
     atomic_init(&capture->overflowed, false);
@@ -704,9 +816,17 @@ StudioCapture *StudioCaptureCreate(uint32_t channels) {
 void StudioCaptureDestroy(StudioCapture *capture) { free(capture); }
 
 int32_t StudioCaptureStart(StudioCapture *capture) {
+    return StudioCaptureStartAt(capture, 0, 0);
+}
+
+int32_t StudioCaptureStartAt(StudioCapture *capture, uint64_t hostTime, double rate) {
     if (!capture || atomic_load(&capture->active) || atomic_load(&capture->writing)) return audioUnavailable;
+    capture->startHostTime = hostTime;
+    capture->rate = rate;
     atomic_store_explicit(&capture->read, 0, memory_order_relaxed);
     atomic_store_explicit(&capture->written, 0, memory_order_relaxed);
+    atomic_store_explicit(&capture->firstHostTime, 0, memory_order_relaxed);
+    atomic_store_explicit(&capture->endHostTime, 0, memory_order_relaxed);
     atomic_store_explicit(&capture->overflowed, false, memory_order_relaxed);
     atomic_store(&capture->active, true);
     return noErr;
@@ -728,6 +848,14 @@ uint64_t StudioCaptureFrames(const StudioCapture *capture) {
     return capture ? atomic_load_explicit(&capture->written, memory_order_acquire) : 0;
 }
 
+uint64_t StudioCaptureFirstHostTime(const StudioCapture *capture) {
+    return capture ? atomic_load_explicit(&capture->firstHostTime, memory_order_relaxed) : 0;
+}
+
+uint64_t StudioCaptureEndHostTime(const StudioCapture *capture) {
+    return capture ? atomic_load_explicit(&capture->endHostTime, memory_order_relaxed) : 0;
+}
+
 uint32_t StudioCaptureRead(StudioCapture *capture, float *samples, uint32_t frames) {
     if (!capture || !samples) return 0;
     uint64_t read = atomic_load_explicit(&capture->read, memory_order_relaxed);
@@ -743,18 +871,22 @@ uint32_t StudioCaptureRead(StudioCapture *capture, float *samples, uint32_t fram
 }
 
 void StudioCaptureWriteStereo(StudioCapture *capture, const AudioBufferList *input) {
+    StudioCaptureWriteStereoAt(capture, input, NULL);
+}
+
+void StudioCaptureWriteStereoAt(StudioCapture *capture, const AudioBufferList *input, const AudioTimeStamp *timestamp) {
     if (!capture || capture->channels != 2) return;
     AudioChannel left = channel(input, 0);
     AudioChannel right = channel(input, 1);
     uint32_t frames = left.frames < right.frames ? left.frames : right.frames;
-    uint64_t position = 0;
-    if (!reserveCapture(capture, frames, &position)) return;
-    for (uint32_t frame = 0; frame < frames; ++frame) {
-        float *sample = captureFrame(capture, position++);
+    CaptureBlock block = {0};
+    if (!reserveCapture(capture, frames, hostTime(timestamp), &block)) return;
+    for (uint32_t frame = block.skip; frame < frames; ++frame) {
+        float *sample = captureFrame(capture, block.position++);
         sample[0] = sampleAt(left, frame);
         sample[1] = sampleAt(right, frame);
     }
-    commitCapture(capture, position);
+    commitCapture(capture, block.position);
 }
 
 double StudioAudioReadPitch(const StudioAudio *audio) {
