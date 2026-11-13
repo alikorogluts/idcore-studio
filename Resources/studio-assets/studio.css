@@ -89,6 +89,8 @@
   .song-header small { font-size: 11px; }
   .song-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
   .song-toolbar select { flex: 1 1 180px; }
+  .song-search { display: grid; gap: 4px; }
+  .song-search input { min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px; background: #151a14; color: inherit; font: inherit; font-weight: 500; }
   .song-listen { padding: 6px 8px; border: 1px solid #67794d; border-radius: 8px; color: var(--accent); font-size: 12px; font-weight: 650; text-decoration: none; }
   .song-listen:hover { border-color: var(--accent); }
   #audio-status { margin: 0 0 12px; }
@@ -156,6 +158,16 @@
   #song-details { display: grid; gap: 4px; padding-top: 7px; border-top: 1px solid #465438; }
   .song-voice { padding-block: 8px; border-bottom: 1px solid #465438; font-size: 12px; }
   .song-voice strong { color: var(--accent); margin-left: 4px; }
+  .song-strat, .song-eq { padding-block: 8px; font-size: 12px; }
+  .song-strat { border-bottom: 1px solid #465438; }
+  .song-strat .song-toolbar { justify-content: space-between; }
+  .song-strat .song-toolbar label { flex: 0 1 auto; }
+  .song-strat .song-toolbar select { flex: auto; }
+  .song-strat strong { color: var(--accent); margin-left: 4px; }
+  .song-strat .hint, .song-eq .hint { margin-top: 5px; }
+  #song-eq-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 5px; margin: 8px 0; }
+  #song-eq-values div { display: flex; justify-content: space-between; gap: 3px; padding: 4px 6px; background: #171e15; border-radius: 4px; font-variant-numeric: tabular-nums; }
+  #song-eq-values dd { margin: 0; color: var(--accent); }
   .song-toolbar .voice-auto { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; font-weight: 500; }
   .voice-auto input { margin: 0; accent-color: var(--accent); }
   .listen-tools, .record-destination, .record-sources { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }

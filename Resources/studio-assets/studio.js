@@ -16,6 +16,7 @@
   let personalPedals = [{type: 1, amount: 34, enabled: true}, {type: 4, amount: 36, enabled: false}];
   let virtualPedals = personalPedals;
   let selectedSong = '';
+  let stratType = 'sss';
   let autoSongVoice = false;
   let songVoiceRequest = '';
   let balanceLevels = true;
@@ -164,7 +165,7 @@
   function renderSongVoice(tone, live) {
     const voice = voices.indexOf(tone.voice);
     const pending = live && session.pendingWrites.has(1);
-    const current = live ? (session.mode === 'patch' && session.slot ? session.slot - 1 : ampValues.get(1)) : undefined;
+    const current = live ? ampValues.get(1) : undefined;
     const matched = current === voice;
     const button = byId('song-apply-voice');
     button.disabled = !live || session.mode !== 'manual' || pending || matched;
@@ -189,20 +190,37 @@
     const tone = songTones.get(selectedSong);
     byId('song-details').hidden = !tone;
     if (!tone) return;
-    byId('song-active').textContent = `${tone.title} · ${tone.section} · ${audioRunning ? 'Canlı pedal tonu' : 'Pedallar hazır'}`;
+    setText('song-active', `${tone.title} · ${tone.section} · ${audioRunning ? 'Canlı pedal tonu' : 'Pedallar hazır'}`);
     const active = virtualPedals.filter(({enabled}) => enabled).map(({type}) => pedalTypes.get(type).name);
-    byId('song-chain').textContent = active.length ? active.join(' → ') : 'Tüm pedallar bypass konumunda.';
+    setText('song-chain', active.length ? active.join(' → ') : 'Tüm pedallar bypass konumunda.');
+    const pickup = tone.pickup;
+    setText('song-pickup', `${pickup}. konum · ${stratPickups[pickup - 1]}${pickup === 1 && stratType === 'hss' ? ' humbucker' : ''}`);
+    const pickupTip = pickup === 1
+      ? stratType === 'hss' ? 'Seçiciyi köprü ucuna al. Fazla sıkışırsa önce açık overdrive’ın sürüşünü veya amfi Gain’i biraz azalt.'
+        : 'Seçiciyi köprü ucuna al. Fazla sivri gelirse 2. konumu dene veya Blackstar Tiz’i biraz kıs.'
+      : pickup === 5 ? 'Seçiciyi sap ucuna al. Solo akorların arkasında kalırsa 4. konumu da dene.'
+        : 'Seçiciyi gitarda elle ayarla. Numaralar köprü ucundan (1) sap ucuna (5) gider.';
+    setText('song-pickup-hint', pickupTip);
     const button = byId('song-eq');
     const status = byId('song-eq-status');
-    const eq = Object.entries(tone.eq ?? {});
+    const eq = Object.entries(stratEQ(tone, stratType));
+    const values = byId('song-eq-values');
+    const signature = eq.map(([, value]) => value).join(',');
+    if (values.dataset.signature !== signature) {
+      values.replaceChildren(...eq.map(([id, value]) => {
+        const row = element('div');
+        row.append(element('dt', '', paramViews.get(Number(id)).label), element('dd', '', String(value)));
+        return row;
+      }));
+      values.dataset.signature = signature;
+    }
     const live = session?.ready && !busy;
     renderSongVoice(tone, live);
     const pending = live && eq.some(([id]) => session.pendingWrites.has(Number(id)));
     const matching = live && eq.every(([id, value]) => ampValues.get(Number(id)) === value);
-    button.hidden = status.hidden = !eq.length;
     button.disabled = !live || pending || matching;
     const message = !live ? 'EQ önerisini uygulamak için USB ile bağlan.' : pending ? 'EQ ayarları amfiden doğrulanıyor…' :
-      matching ? 'Amfi EQ’su öneriyle eşleşiyor.' : 'Bu ton için isteğe bağlı amfi EQ önerisi var.';
+      matching ? 'Amfi EQ’su öneriyle eşleşiyor.' : 'Uygula düğmesi bu değerleri Blackstar’a gönderir.';
     if (status.textContent !== message) status.textContent = message;
   }
 
@@ -406,7 +424,7 @@
 
   function saveSettings(persist = !selectedSong) {
     const data = JSON.stringify({names: presetNames, pedals: virtualPedals, balanceLevels});
-    const stored = persist ? JSON.stringify({names: presetNames, pedals: personalPedals, autoSongVoice, balanceLevels}) : null;
+    const stored = persist ? JSON.stringify({names: presetNames, pedals: personalPedals, autoSongVoice, balanceLevels, stratType}) : null;
     settingsWrite = settingsWrite.then(async () => {
       if (window.studioSettings) {
         if (stored) await window.studioSettings.save(stored);
@@ -442,6 +460,7 @@
       const data = JSON.parse(stored ?? 'null');
       autoSongVoice = data?.autoSongVoice === true;
       balanceLevels = data?.balanceLevels !== false;
+      stratType = data?.stratType === 'hss' ? 'hss' : 'sss';
       if (Array.isArray(data?.names) && data.names.length === 6 && data.names.every((name) => typeof name === 'string' && name.trim() && name.length <= 32)) presetNames = data.names;
       if (Array.isArray(data?.pedals) && data.pedals.length <= pedalTypes.size && new Set(data.pedals.map((pedal) => pedal?.type)).size === data.pedals.length &&
           data.pedals.every((pedal) => {
@@ -454,6 +473,8 @@
     virtualPedals = personalPedals;
     settingsLoaded = true;
     byId('song-title').disabled = false;
+    byId('song-search').disabled = false;
+    byId('song-strat-type').value = stratType;
     byId('song-auto-voice').checked = autoSongVoice;
     byId('balance-levels').checked = balanceLevels;
     renderPedals();
@@ -561,7 +582,8 @@
         guitar: byId('record-guitar').checked, mac: byId('record-mac').checked,
         diagnostics: byId('record-diagnostics').checked,
         amp: Object.fromEntries(ampValues), mode: session?.mode ?? null, slot: session?.slot ?? null,
-        firmware: session?.firmware ?? null, pedals: virtualPedals, balanceLevels
+        firmware: session?.firmware ?? null, pedals: virtualPedals, balanceLevels,
+        strat: {type: stratType, suggestedPickup: songTones.get(selectedSong)?.pickup ?? null}
       });
     });
   }
@@ -1121,32 +1143,63 @@
     saveSettings(true);
   });
   byId('song-eq').addEventListener('click', () => {
-    const eq = songTones.get(selectedSong)?.eq;
-    if (!session?.ready || !eq) return;
-    for (const [parameter, value] of Object.entries(eq)) {
+    const tone = songTones.get(selectedSong);
+    if (!session?.ready || !tone) return;
+    for (const [parameter, value] of Object.entries(stratEQ(tone, stratType))) {
       if (ampValues.get(Number(parameter)) !== value) edit(Number(parameter), value);
     }
+  });
+  byId('song-strat-type').addEventListener('change', (event) => {
+    stratType = event.target.value;
+    renderSong();
+    saveSettings(true);
   });
   const songPicker = byId('song-title');
   const sectionPicker = byId('song-section');
   const sectionsBySong = new Map();
   songPicker.disabled = true;
-  byId('song-count').textContent = `${songTones.size} ton`;
+  const songGroups = [];
+  const searchKey = (value) => value.toLocaleLowerCase('tr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i');
   for (const album of songAlbums) {
-    const group = element('optgroup');
-    group.label = album.name;
     const songs = new Map();
     for (const tone of album.tones) {
       if (!songs.has(tone.title)) songs.set(tone.title, []);
       songs.get(tone.title).push(tone);
     }
-    for (const [title, sections] of songs) {
+    for (const sections of songs.values()) {
       const id = sections[0].key;
-      group.append(new Option(title, id));
       sectionsBySong.set(id, sections);
     }
-    songPicker.append(group);
+    songGroups.push({name: album.name, songs});
   }
+  byId('song-count').textContent = `${sectionsBySong.size} şarkı · ${songTones.size} ton`;
+
+  function filterSongs(query) {
+    const search = searchKey(query.trim());
+    const active = songPicker.value;
+    const groups = [];
+    let matches = 0;
+    for (const {name, songs} of songGroups) {
+      const group = element('optgroup');
+      group.label = name;
+      const albumMatches = searchKey(name).includes(search);
+      for (const [title, sections] of songs) {
+        const id = sections[0].key;
+        const matched = albumMatches || searchKey(title).includes(search);
+        if (matched) matches++;
+        if (matched || id === active) group.append(new Option(title, id));
+      }
+      if (group.children.length) groups.push(group);
+    }
+    songPicker.replaceChildren(new Option('Zincirim', ''), ...groups);
+    songPicker.value = active;
+    const status = byId('song-search-status');
+    status.hidden = !search;
+    setText('song-search-status', matches ? `${matches} şarkı bulundu. Listeden seç.` : 'Şarkı bulunamadı.');
+  }
+
+  filterSongs('');
+  byId('song-search').addEventListener('input', (event) => filterSongs(event.target.value));
   songPicker.addEventListener('change', () => {
     if (!settingsLoaded) return;
     const sections = sectionsBySong.get(songPicker.value) ?? [];

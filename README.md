@@ -34,7 +34,11 @@ USB komutları için protokol başvurusu. [ASTRO Blackstar](https://github.com/S
 
 ## Şarkı ve akort seçimi
 
-Şarkıyı ve varsa bölümünü seçtiğinde sanal pedal zinciri yüklenir. Amfinin donanım yuvaları ayrı çalışır. EQ önerisi bulunan tonlarda **EQ önerisini uygula** düğmesi ayarları Blackstar’a gönderir ve amfiden geri okur.
+**Şarkı ara** alanı yedi stüdyo albümünde parça ve albüm adına göre arar. Şarkıyı ve varsa giriş, ritim veya solo bölümünü seçtiğinde sanal pedal zinciri yüklenir. Amfinin donanım yuvaları ayrı çalışır. [Duman’ın resmî diskografisi](https://dumanlive.com/albumler/grup-albumler)
+
+**Strat manyetiği** önerisi standart beş konumlu seçicide köprü ucundan (1) sap ucuna (5) numaralanır. Gitarın köprü manyetiği tekliyse **SSS**, çift bobinliyse **HSS** seç. HSS köprü konumu için küçük bir EQ uyarlaması gösterilir. Konumu gitarda elle seç. [Fender Stratocaster manyetik seçicisi](https://www.fender.com/articles/instruments/sounds-aplenty-the-stratocaster-pickup-selector-switch)
+
+**EQ önerisini uygula**, seçilen bölümün başlangıç değerlerini Blackstar’a gönderir ve amfiden geri okur. **Albüm kaydını dinle**, şarkının yayımlanmış sürümünü YouTube Music’te açar. Bu kayıt dinleme referansıdır. Preset değerleri miks içinden ölçülmüş gitar EQ’su veya stüdyo ayarı değildir.
 
 **Akort ve entonasyon** bölümünde en kalın tel 6, en ince tel 1 olarak gösterilir. Standart akortta açık teller E2–A2–D3–G3–B3–E4, Drop D’de 6. tel D2’dir. **12. perde** modunda önce harmoniği, sonra normal kuvvetle basılan notayı ölç. Pozitif farkta telin titreşen boyu uzatılır, negatif farkta kısaltılır. Her köprü ayarından sonra açık teli yeniden akort et. [Fender entonasyon kılavuzu](https://www.fender.com/articles/maintenance/intonation-101)
 

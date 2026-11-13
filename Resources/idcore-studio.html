@@ -85,14 +85,26 @@
       </details>
       <div class="song-picker">
         <div class="song-header"><h3>Duman · Şarkı tonları</h3><small id="song-count"></small></div>
+        <label class="song-search">Şarkı ara<input id="song-search" type="search" placeholder="Örn. Yanıbaşımdan" aria-describedby="song-search-status" disabled></label>
+        <p class="hint" id="song-search-status" role="status" hidden></p>
         <div class="song-toolbar">
           <label>Şarkı<select id="song-title" aria-describedby="song-hint"><option value="">Zincirim</option></select></label>
-          <label id="song-section-wrap" hidden>Bölüm<select id="song-section"></select></label>
+          <label id="song-section-wrap" hidden>Çalım bölümü<select id="song-section"></select></label>
         </div>
         <p class="hint" id="song-hint">Şarkıyı ve çalacağın bölümü seç. Pedallar otomatik yüklenir. Amfinin altı yuvası ayrı seçilir.</p>
         <div id="song-details" hidden>
           <p id="song-active" class="song-active"></p>
           <p class="hint" id="song-chain"></p>
+          <div class="song-strat">
+            <div class="song-toolbar">
+              <p>Strat manyetiği <strong id="song-pickup"></strong></p>
+              <label>Gitar tipi<select id="song-strat-type">
+                <option value="sss">SSS · 3 tekli manyetik</option>
+                <option value="hss">HSS · Köprüde humbucker</option>
+              </select></label>
+            </div>
+            <p class="hint" id="song-pickup-hint"></p>
+          </div>
           <div class="song-voice">
             <p><span>Önerilen amfi Voice</span> <strong id="song-voice"></strong></p>
             <p class="hint" id="song-voice-status" role="status"></p>
@@ -101,10 +113,15 @@
               <label class="voice-auto"><input id="song-auto-voice" type="checkbox"> Şarkıyla otomatik seç</label>
             </div>
           </div>
-          <p class="hint" id="song-eq-status" role="status" hidden></p>
-          <div class="song-toolbar song-actions">
-            <a class="song-listen" id="song-listen" rel="noreferrer" hidden>Referansı dinle <span aria-hidden="true">↗</span></a>
-            <button type="button" id="song-eq" class="song-listen" hidden>EQ önerisini uygula</button>
+          <div class="song-eq">
+            <p><strong>Blackstar EQ başlangıç ayarı</strong></p>
+            <p class="hint">Değerler seçili bölümün presetinden gelir. Albüm kaydını dinleyip kendi gitarına göre ince ayar yapabilirsin.</p>
+            <dl id="song-eq-values" aria-label="Önerilen EQ değerleri"></dl>
+            <p class="hint" id="song-eq-status" role="status"></p>
+            <div class="song-toolbar song-actions">
+              <button type="button" id="song-eq" class="song-listen">EQ önerisini uygula</button>
+              <a class="song-listen" id="song-listen" rel="noreferrer" hidden>Albüm kaydını dinle <span aria-hidden="true">↗</span></a>
+            </div>
           </div>
         </div>
       </div>
